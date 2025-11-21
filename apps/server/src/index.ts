@@ -1,5 +1,6 @@
 import "dotenv/config";
 import Fastify from "fastify";
+import os from "os";
 import fastifyCors from "@fastify/cors";
 
 import { auth } from "@ams-backend/auth";
@@ -48,7 +49,21 @@ fastify.route({
 });
 
 fastify.get("/", async () => {
-	return "OK";
+	return { message: "Hi User <3 - AMS Backend Server", 
+		version: process.env.VERSION || "dev", 
+		timestamp: new Date().toISOString(),
+	};
+});
+
+fastify.get("/health", async () => {
+	return { message: "OK.", 
+		version: process.env.VERSION || "dev", 
+		timestamp: new Date().toISOString(),
+		uptime: {
+			process: process.uptime().toFixed(0),
+			server: os.uptime().toFixed(0)
+		}
+	};
 });
 
 fastify.listen({ port: 3000 }, (err) => {
