@@ -1,5 +1,5 @@
 {
   "watch": ["**/*.ts", "index.ts"],
-  "exec": "npx tsx src/index.ts",
+  "exec": "bunx tsx src/index.ts",
   "ext": "js ts"
 }

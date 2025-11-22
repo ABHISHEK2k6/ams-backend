@@ -3,7 +3,7 @@
   "main": "src/index.ts",
   "type": "module",
   "scripts": {
-    "build": "tsdown",
+    "build": "tsc -p tsconfig.json",
     "check-types": "tsc -b",
     "compile": "bun build --compile --minify --sourcemap --bytecode ./src/index.ts --outfile server",
     "dev": "nodemon",
@@ -21,7 +21,6 @@
   "devDependencies": {
     "@types/bun": "^1.2.6",
     "nodemon": "^3.1.11",
-    "tsdown": "^0.16.5",
     "tsx": "^4.20.6",
     "typescript": "^5.8.2"
   }
