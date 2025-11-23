@@ -2,13 +2,13 @@
   "name": "server",
   "main": "src/index.ts",
   "type": "module",
-   "scripts": {
+  "scripts": {
     "build": "tsc -p tsconfig.json",
     "check-types": "tsc -b",
     "compile": "bun build --compile --minify --sourcemap --bytecode ./src/index.ts --outfile server",
     "dev": "nodemon",
     "start": "node dist/index.js",
-    "vercel-build": "tsc -p tsconfig.json"
+    "vercel-build": "tsc"
   },
   "dependencies": {
     "@fastify/autoload": "^6.3.1",
