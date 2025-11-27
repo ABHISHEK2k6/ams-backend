@@ -14,7 +14,7 @@ const fastify = Fastify({
 
 // CORS configuration
 fastify.register(cors, {
-	origin: process.env.CORS_ORIGIN && process.env.CORS_ORIGIN_DEV ? [process.env.CORS_ORIGIN, process.env.CORS_ORIGIN_DEV] : ["*"],
+	origin: [process.env.CORS_ORIGIN, process.env.CORS_ORIGIN_DEV].filter((origin): origin is string => !!origin),
 	methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
 	allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
 	credentials: true,
