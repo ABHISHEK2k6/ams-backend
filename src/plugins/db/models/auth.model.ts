@@ -8,7 +8,7 @@ const { Schema, model } = mongoose;
 
 const userSchema = new Schema(
 	{
-		_id: { type: String },
+		_id: { type: mongoose.Schema.Types.ObjectId },
 		name: { type: String, required: true },
 		email: { type: String, required: true, unique: true },
 		emailVerified: { type: Boolean, required: true },
@@ -23,10 +23,37 @@ const userSchema = new Schema(
 			enum: ["student", "teacher", "parent", "principal", "hod", "staff", "admin"]
 		},
 		phone : {type: Number, required: true},
-		password_hash: { type: String, required: true },
+		password_hash: { type: String, required: false },
 	},
 	{ collection: "user" },
 );
+
+
+
+
+userSchema.pre('deleteOne', { document: true, query: false }, async function(next) {
+  // 'this' refers to the document being removed
+  try {
+	if (this.role == "student"){
+    	await Student.deleteOne({ user: this._id });
+    	await Parent.deleteOne({ child: this._id });
+	}
+	else if (this.role == "parent"){
+		const ChildID = await Parent.findOne({user: this._id}) // getting the student's ID to whom the parent is connected with.
+		await Parent.deleteOne({ user: this._id });
+		await Student.deleteOne(ChildID?.child)
+	}
+	else if (this.role === "teacher" || this.role === "principal" || this.role === "hod" || this.role === "admin" || this.role === "staff") {
+		await Teacher.deleteOne({user: this._id});
+	}
+    next();
+  } catch (error) {
+    console.error("Cascading delete failed:", error);
+    next(new Error("An unknown error occurred during cascading delete.")); // Pass the error to stop the main delete operation
+  }
+});
+
+
 
 const sessionSchema = new Schema(
 	{
@@ -75,7 +102,7 @@ const verificationSchema = new Schema(
 
 const studentSchema = new Schema(
 	{
-		_id: { type: String },
+		// _id: { type: String },
 		user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
 		gender: { 
 			type: String, 
@@ -97,7 +124,7 @@ const studentSchema = new Schema(
 
 const teacherSchema = new Schema(
 	{
-		_id: { type: String },
+		// _id: { type: String },
 		user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
 		designation : {type: String, required: true},
 		department: { type: String, required: true },
@@ -108,7 +135,7 @@ const teacherSchema = new Schema(
 
 const parentSchema = new Schema(
 	{
-		_id: { type: String },
+		// _id: { type: String },
 		user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
 		child: { type: mongoose.Schema.Types.ObjectId, ref: "Student", required: true },
 		relation: { 
