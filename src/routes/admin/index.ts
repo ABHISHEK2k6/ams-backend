@@ -4,6 +4,14 @@ import { auth } from "@/plugins/auth";
 import { isAdmin } from "@/middleware/roles";
 import authMiddleware from "../../middleware/auth"
 
+import { createAuthClient } from "better-auth/client";
+import { adminClient } from "better-auth/client/plugins";
+
+const authClient = createAuthClient({
+    baseURL: "http://localhost:3000", // if you also run server
+    plugins: [ adminClient() ],
+});
+
 export default async function (fastify: FastifyInstance) {
     fastify.addHook("preHandler", authMiddleware);  
     fastify.addHook("preHandler" , isAdmin);
@@ -11,8 +19,10 @@ export default async function (fastify: FastifyInstance) {
     fastify.delete("/v1/api/delete-user/:id", async (request: FastifyRequest, reply: FastifyReply) => {
         const UserID = request.params.id  //ID OF THE USER TO BE DELETED
         try {
-
-            await auth.api.deleteUser(request.user.id)
+            console.log("k");
+            
+            await authClient.admin.removeUser({userId :UserID})
+             console.log("k");
             const user = await User.findById(UserID)
             await User.findByIdAndDelete(UserID)
 
@@ -36,7 +46,7 @@ export default async function (fastify: FastifyInstance) {
             })
         }
         catch (e) {
-            return reply.status(404).send({
+            return reply.send({
                 "status_code": 404,
                 "message": "Can't delete the user",
                 "error": e
