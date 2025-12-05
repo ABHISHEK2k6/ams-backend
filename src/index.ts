@@ -24,7 +24,8 @@ fastify.register(cors, {
 // Register routes
 const __filename = fileURLToPath(import.meta.url) 
 fastify.register(AutoLoad, {
-  dir: path.join(dirname(__filename), 'routes')
+  dir: path.join(dirname(__filename), 'routes'),
+  options: { prefix: 'v1/api/' }
 });
 
 

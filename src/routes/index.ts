@@ -1,5 +1,6 @@
 'use strict'
 
+import authMiddleware from "@/middleware/auth"
 import { FastifyInstance } from "fastify"
 import os from "os"
 
@@ -25,6 +26,6 @@ export default async function (fastify: FastifyInstance) {
         server: os.uptime().toFixed(0)
       }
     };
-});
+}).addHook("preHandler" , authMiddleware)
   
 }

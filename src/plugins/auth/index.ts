@@ -4,7 +4,7 @@ import { client } from "../db/index.js";
 
 // 👇 import admin plugin
 // import { admin } from "better-auth/plugins";
-import { admin } from "better-auth/plugins";
+// import { admin } from "better-auth/plugins";
 
 export const auth = betterAuth<BetterAuthOptions>({
   database: mongodbAdapter(client),
@@ -12,7 +12,7 @@ export const auth = betterAuth<BetterAuthOptions>({
     (origin): origin is string => !!origin
   ),
   user: {
-    modelName: "user",
+    modelName: "User",
     additionalFields: {
       role: {
         type: "string",
@@ -44,9 +44,9 @@ export const auth = betterAuth<BetterAuthOptions>({
   },
 
   // 👇 here add the plugin
-  plugins: [
-    admin()
-  ],
+  // plugins: [
+  //   admin()
+  // ],
 
   
 });

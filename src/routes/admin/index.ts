@@ -16,7 +16,7 @@ export default async function (fastify: FastifyInstance) {
     fastify.addHook("preHandler", authMiddleware);  
     fastify.addHook("preHandler" , isAdmin);
     // ENDPOINT TO DELETE USER BASIC AUTHENTICATION USING BETTER-AUTH (ONLY THE REQUEST WITH THE ROLE ADMIN CAN PERFORM THIS ACTION.)
-    fastify.delete("/v1/api/delete-user/:id", async (request: FastifyRequest, reply: FastifyReply) => {
+    fastify.delete("/delete-user/:id", async (request: FastifyRequest, reply: FastifyReply) => {
         const UserID = request.params.id  //ID OF THE USER TO BE DELETED
         try {
             console.log("k");
@@ -34,7 +34,6 @@ export default async function (fastify: FastifyInstance) {
             else if (user?.role == "parent") {
                 const ChildID = await Parent.findOne({ user: user._id }) // GETTING THE ID OF THE CHILD TO WHOM PARENT IS CONNECTED WITH.
                 await Parent.deleteOne({ user: user._id });
-                await Student.deleteOne(ChildID?.child)
             }
             else if (user?.role === "teacher" || user?.role === "principal" || user?.role === "hod" || user?.role === "admin" || user?.role === "staff") {
                 await Teacher.deleteOne({ user: user._id });
