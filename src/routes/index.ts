@@ -26,6 +26,6 @@ export default async function (fastify: FastifyInstance) {
         server: os.uptime().toFixed(0)
       }
     };
-}).addHook("preHandler" , authMiddleware)
+})
   
 }

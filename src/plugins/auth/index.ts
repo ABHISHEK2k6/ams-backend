@@ -36,7 +36,15 @@ export const auth = betterAuth<BetterAuthOptions>({
       redirectURI: process.env.GOOGLE_REDIRECT_URI || undefined,
     },
   },
+   session: {
+        cookieCache: {
+            enabled: true,
+            maxAge: 10 * 60,
+            strategy: "jwt"
+        }
+    },
   advanced: {
+    cookiePrefix : "ams",
     defaultCookieAttributes: {
       sameSite: "none",
       secure: true,
@@ -46,6 +54,6 @@ export const auth = betterAuth<BetterAuthOptions>({
 });
 
 export const authClient = createAuthClient({
-	  baseURL: process.env.BETTER_AUTH_URL || "http://localhost:3000",
+	  baseURL: process.env.BETTER_AUTH_URL || "http://localhost:4000",
 	  plugins: [adminClient()],
 });
