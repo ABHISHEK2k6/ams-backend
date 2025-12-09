@@ -2,9 +2,8 @@ import { betterAuth, type BetterAuthOptions } from "better-auth";
 import { mongodbAdapter } from "better-auth/adapters/mongodb";
 import { client } from "../db/index.js";
 
-// 👇 import admin plugin
-// import { admin } from "better-auth/plugins";
-// import { admin } from "better-auth/plugins";
+import { createAuthClient } from "better-auth/client";
+import { adminClient } from "better-auth/client/plugins";
 
 export const auth = betterAuth<BetterAuthOptions>({
   database: mongodbAdapter(client),
@@ -12,11 +11,13 @@ export const auth = betterAuth<BetterAuthOptions>({
     (origin): origin is string => !!origin
   ),
   user: {
-    modelName: "User",
+    modelName: "user",
     additionalFields: {
       role: {
         type: "string",
-        required: true,
+        required: false,
+        defaultValue: "student",
+        input: false,
       },
     },
     deleteUser: {
@@ -42,11 +43,9 @@ export const auth = betterAuth<BetterAuthOptions>({
       httpOnly: true,
     },
   },
+});
 
-  // 👇 here add the plugin
-  // plugins: [
-  //   admin()
-  // ],
-
-  
+export const authClient = createAuthClient({
+	  baseURL: process.env.BETTER_AUTH_URL || "http://localhost:3000",
+	  plugins: [adminClient()],
 });

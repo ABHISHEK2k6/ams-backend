@@ -1,8 +1,4 @@
-import { role } from "better-auth/client";
-import { password } from "bun";
 import mongoose, { mongo, InferSchemaType } from "mongoose";
-import { string } from "zod";
-import { required } from "zod/mini";
 
 const { Schema, model } = mongoose;
 
@@ -20,7 +16,13 @@ const userSchema = new Schema(
 		role: { 
 			type: String, 
 			required: true,
+			default: "student",
 			enum: ["student", "teacher", "parent", "principal", "hod", "staff", "admin"]
+		},
+		gender: { 
+			type: String, 
+			required: false,
+			enum: ["male", "female", "other"]
 		},
 		phone : {type: Number, required: true},
 		password_hash: { type: String, required: false },
@@ -36,12 +38,9 @@ userSchema.pre('deleteOne', { document: true, query: false }, async function(nex
   try {
 	if (this.role == "student"){
     	await Student.deleteOne({ user: this._id });
-    	await Parent.deleteOne({ child: this._id });
 	}
 	else if (this.role == "parent"){
-		const ChildID = await Parent.findOne({user: this._id}) // getting the student's ID to whom the parent is connected with.
 		await Parent.deleteOne({ user: this._id });
-		await Student.deleteOne(ChildID?.child)
 	}
 	else if (this.role === "teacher" || this.role === "principal" || this.role === "hod" || this.role === "admin" || this.role === "staff") {
 		await Teacher.deleteOne({user: this._id});
@@ -104,11 +103,6 @@ const studentSchema = new Schema(
 	{
 		// _id: { type: String },
 		user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-		gender: { 
-			type: String, 
-			required: true,
-			enum: ["male", "female", "other"]
-		},
 		adm_number : {type: String, required: true , unique: true },
 		adm_year: { type: Number, required: true },
 		candidate_code: { type: String, required: true , unique: true },
