@@ -112,6 +112,7 @@ const studentSchema = new Schema(
 			enum: ["CSE", "ECE", "IT"]
 		},
 		date_of_birth: { type: Date, required: true },
+		batch : {type: mongoose.Schema.Types.ObjectId, ref: "Batch", required: true },
 	},
 	{ collection: "student" },
 );

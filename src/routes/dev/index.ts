@@ -2,6 +2,8 @@ import { FastifyReply, FastifyInstance, FastifyRequest, RouteShorthandOptions } 
 import { Parent, Student, Teacher, User } from "@/plugins/db/models/auth.model";
 import { auth } from "@/plugins/auth";
 import { isAdmin } from "@/middleware/roles";
+import { request } from "http";
+import { Batch } from "@/plugins/db/models/academics.model";
 
 
 
@@ -45,7 +47,33 @@ export default async function (fastify: FastifyInstance) {
         }
     })
 
-
-    // ENDPOINT TO CREATE USER WITH ROLE BASED ADDITIONAL DETAILS BASIC AUTHENTICATION USING BETTER-AUTH
+    fastify.post("/create-batch" , async (request: FastifyRequest<{ Params: { id?: string } }>, reply:FastifyReply) => {
+        const {name, adm_year,department,staff_ID} = request.body as {
+            name : string,
+            adm_year : number,
+            department : string,
+            staff_ID : string,
+        }
+        const teacherInstance = await Teacher.findById(staff_ID)
+        if (!teacherInstance){
+            return reply.status(404).send({
+                status_code: 404,
+                message: "Teacher not found",
+                data: "",
+            });
+        }
+        const createBatch = new Batch({
+            name: name,
+            adm_year: adm_year,
+            department: department,
+            staff_advisor: teacherInstance._id
+        })
+        await createBatch.save()
+        return reply.status(201).send({
+            "status_code": 201,
+            "message": "Successfully created the batch",
+            "data": createBatch
+        })
+    })
 
 }
