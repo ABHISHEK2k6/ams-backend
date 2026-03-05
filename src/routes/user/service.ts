@@ -654,7 +654,7 @@ export const bulkCreateUsers = async (
       }
     }
 
-    const statusCode = results.failed.length === 0 ? 201 : 207; // 207 = Multi-Status
+    const statusCode = results.success.length === 0 ? 422 : results.failed.length === 0 ? 201 : 207; // 207 = Multi-Status, 422 = all failed
 
     return reply.status(statusCode).send({
       status_code: statusCode,

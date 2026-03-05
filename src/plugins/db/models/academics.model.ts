@@ -23,7 +23,7 @@ const batchSchema = new Schema(
 
 const subjectSchema = new Schema(
     {
-        _id: { type: String },
+        name: { type: String, required: true },
         sem : {type: String, required : true},
         subject_code: { type: String, required: true },
         type: { 

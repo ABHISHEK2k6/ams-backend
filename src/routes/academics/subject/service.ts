@@ -13,13 +13,13 @@ interface GetSubjectParams {
 }
 
 interface CreateSubjectBody {
-  _id: string;
+  name: string;
   sem: string;
   subject_code: string;
   type: "Theory" | "Practical";
   total_marks: number;
   pass_mark: number;
-  faculty_in_charge: string[];
+  faculty_in_charge?: string[];
 }
 
 interface UpdateSubjectParams {
@@ -27,6 +27,7 @@ interface UpdateSubjectParams {
 }
 
 interface UpdateSubjectBody {
+  name?: string;
   sem?: string;
   subject_code?: string;
   type?: "Theory" | "Practical";
@@ -117,7 +118,7 @@ export const createSubjectHandler = async (
   reply: FastifyReply
 ) => {
   try {
-    const { _id, sem, subject_code, type, total_marks, pass_mark, faculty_in_charge } = request.body as CreateSubjectBody;
+    const { name, sem, subject_code, type, total_marks, pass_mark, faculty_in_charge } = request.body as CreateSubjectBody;
 
     // Validate that pass_mark is not greater than total_marks
     if (pass_mark > total_marks) {
@@ -128,18 +129,8 @@ export const createSubjectHandler = async (
       });
     }
 
-    // Check if subject with same _id already exists
-    const existingSubject = await Subject.findById(_id);
-    if (existingSubject) {
-      return reply.status(422).send({
-        status_code: 422,
-        message: "Subject with this ID already exists",
-        data: "",
-      });
-    }
-
     const subject = await Subject.create({
-      _id,
+      name,
       sem,
       subject_code,
       type,

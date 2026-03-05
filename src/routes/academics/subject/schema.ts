@@ -25,9 +25,9 @@ export const getSubjectByIdSchema: RouteShorthandOptions["schema"] = {
 export const createSubjectSchema: RouteShorthandOptions["schema"] = {
   body: {
     type: "object",
-    required: ["_id", "sem", "subject_code", "type", "total_marks", "pass_mark", "faculty_in_charge"],
+    required: ["name", "sem", "subject_code", "type", "total_marks", "pass_mark"],
     properties: {
-      _id: { type: "string", minLength: 1 },
+      name: { type: "string", minLength: 1 },
       sem: { type: "string", minLength: 1 },
       subject_code: { type: "string", minLength: 1 },
       type: { type: "string", enum: ["Theory", "Practical"] },
@@ -36,7 +36,6 @@ export const createSubjectSchema: RouteShorthandOptions["schema"] = {
       faculty_in_charge: { 
         type: "array",
         items: { type: "string" },
-        minItems: 1,
       },
     },
   },
@@ -53,6 +52,7 @@ export const updateSubjectSchema: RouteShorthandOptions["schema"] = {
   body: {
     type: "object",
     properties: {
+      name: { type: "string", minLength: 1 },
       sem: { type: "string", minLength: 1 },
       subject_code: { type: "string", minLength: 1 },
       type: { type: "string", enum: ["Theory", "Practical"] },
@@ -61,7 +61,6 @@ export const updateSubjectSchema: RouteShorthandOptions["schema"] = {
       faculty_in_charge: { 
         type: "array",
         items: { type: "string" },
-        minItems: 1,
       },
     },
   },
