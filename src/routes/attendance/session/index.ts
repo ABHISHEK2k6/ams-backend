@@ -10,6 +10,7 @@ import {
   createSession, 
   getSession, 
   listSessions, 
+  getRecentSessions,
   updateSession, 
   deleteSession 
 } from "./service";
@@ -38,6 +39,11 @@ export default async function (fastify: FastifyInstance) {
     schema: sessionListSchema, 
     preHandler: [isAnyStaff] 
   }, listSessions);
+
+  // Get unique batch-subject combinations for current user
+  fastify.get("/recent", { 
+    preHandler: [isAnyStaff] 
+  }, getRecentSessions);
 
   fastify.get<{ Params: { id: string } }>("/:id", { 
     preHandler: [isAnyStaff] 

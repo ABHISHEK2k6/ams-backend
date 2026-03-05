@@ -7,7 +7,6 @@ const { Schema, model } = mongoose;
 
 const attendanceSessionSchema  = new Schema(
     {
-        _id: { type: String },
         batch : {
             type: mongoose.Schema.Types.ObjectId,
             ref: "Batch",
@@ -43,7 +42,6 @@ const attendanceSessionSchema  = new Schema(
 
 const attendanceRecordSchema  = new Schema(
     {
-        _id: { type: String },
         student : {
             type: mongoose.Schema.Types.ObjectId,
             ref:"Student",

@@ -178,6 +178,107 @@ export const listSessions = async (
   }
 };
 
+export const getRecentSessions = async (
+  request: FastifyRequest,
+  reply: FastifyReply
+) => {
+  try {
+    const userId = request.user.id;
+    
+    // Find the teacher associated with this user
+    const teacher = await Teacher.findOne({ user: userId });
+    if (!teacher) {
+      return reply.status(404).send({
+        status_code: 404,
+        message: "Teacher profile not found",
+        data: "",
+      });
+    }
+
+    // Use aggregation to get unique batch-subject combinations
+    const uniqueSessions = await AttendanceSession.aggregate([
+      {
+        $match: {
+          created_by: teacher._id,
+        },
+      },
+      {
+        $group: {
+          _id: {
+            batch: "$batch",
+            subject: "$subject",
+          },
+          sessionCount: { $sum: 1 },
+          latestSession: { $max: "$start_time" },
+        },
+      },
+      {
+        $lookup: {
+          from: "batch",
+          localField: "_id.batch",
+          foreignField: "_id",
+          as: "batchInfo",
+        },
+      },
+      {
+        $lookup: {
+          from: "subject",
+          localField: "_id.subject",
+          foreignField: "_id",
+          as: "subjectInfo",
+        },
+      },
+      {
+        $unwind: {
+          path: "$batchInfo",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $unwind: {
+          path: "$subjectInfo",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          batch: {
+            _id: "$batchInfo._id",
+            name: "$batchInfo.name",
+            code: "$batchInfo.code",
+            year: "$batchInfo.year",
+          },
+          subject: {
+            _id: "$subjectInfo._id",
+            name: "$subjectInfo.name",
+            code: "$subjectInfo.code",
+          },
+          sessionCount: 1,
+          latestSession: 1,
+        },
+      },
+      {
+        $sort: {
+          latestSession: -1,
+        },
+      },
+    ]);
+
+    return reply.send({
+      status_code: 200,
+      message: "Recent sessions fetched successfully",
+      data: uniqueSessions,
+    });
+  } catch (error) {
+    return reply.status(500).send({
+      status_code: 500,
+      message: "Failed to fetch recent sessions",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+};
+
 export const updateSession = async (
   request: FastifyRequest<{ Params: { id: string } }>,
   reply: FastifyReply

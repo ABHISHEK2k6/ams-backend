@@ -6,6 +6,7 @@ Base URL: `/attendance/session`
 - [Authentication](#authentication)
 - [Endpoints](#endpoints)
   - [List Attendance Sessions](#list-attendance-sessions)
+  - [Get Unique Sessions for Current User](#get-unique-sessions-for-current-user)
   - [Get Attendance Session](#get-attendance-session)
   - [Create Attendance Session](#create-attendance-session)
   - [Update Attendance Session](#update-attendance-session)
@@ -98,6 +99,93 @@ Retrieve a paginated list of attendance sessions with optional filtering.
   }
 }
 ```
+
+---
+
+### Get Unique Sessions for Current User
+
+Retrieve unique batch-subject combinations for attendance sessions created by the authenticated user. This endpoint aggregates sessions to show distinct batch-subject pairs, along with the count of sessions and the most recent session date for each combination.
+
+**Endpoint:** `GET /attendance/session/recent`
+
+**Authentication:** Required (Staff only)
+
+**Query Parameters:** None
+
+**Response Codes:**
+- `200` – Success
+- `401` – Unauthorized
+- `403` – Forbidden (not a staff member)
+- `404` – Teacher profile not found
+- `500` – Server error
+
+**Response Example:**
+```json
+{
+  "status_code": 200,
+  "message": "Recent sessions fetched successfully",
+  "data": [
+    {
+      "batch": {
+        "_id": "batch_id_1",
+        "name": "CSE 2024-A",
+        "code": "CSE24A",
+        "year": 2024
+      },
+      "subject": {
+        "_id": "subject_id_1",
+        "name": "Data Structures",
+        "code": "CS201"
+      },
+      "sessionCount": 15,
+      "latestSession": "2026-03-05T10:30:00.000Z"
+    },
+    {
+      "batch": {
+        "_id": "batch_id_1",
+        "name": "CSE 2024-A",
+        "code": "CSE24A",
+        "year": 2024
+      },
+      "subject": {
+        "_id": "subject_id_2",
+        "name": "Algorithms",
+        "code": "CS301"
+      },
+      "sessionCount": 12,
+      "latestSession": "2026-03-04T14:00:00.000Z"
+    },
+    {
+      "batch": {
+        "_id": "batch_id_2",
+        "name": "CSE 2024-B",
+        "code": "CSE24B",
+        "year": 2024
+      },
+      "subject": {
+        "_id": "subject_id_1",
+        "name": "Data Structures",
+        "code": "CS201"
+      },
+      "sessionCount": 10,
+      "latestSession": "2026-03-03T09:00:00.000Z"
+    }
+  ]
+}
+```
+
+**Usage:**
+This endpoint is useful for:
+- Displaying a teacher's teaching assignments
+- Showing summary of classes taught by a teacher
+- Filtering or grouping attendance records by the combinations a teacher has taught
+- Dashboard widgets showing active batch-subject combinations
+
+**Notes:**
+- Results are sorted by `latestSession` in descending order (most recent first)
+- Only sessions created by the authenticated user are included
+- The `sessionCount` field indicates how many sessions exist for each batch-subject combination
+- If a batch or subject has been deleted, those fields may be empty in the response
 
 ---
 
