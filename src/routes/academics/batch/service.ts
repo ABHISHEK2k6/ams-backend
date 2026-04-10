@@ -56,13 +56,7 @@ export const listBatchesHandler = async (
     if (adm_year) filter.adm_year = adm_year;
 
     const batches = await Batch.find(filter)
-      .populate({
-        path: "staff_advisor",
-        populate: {
-          path: "user",
-          select: "first_name last_name email",
-        },
-      })
+      .populate("staff_advisor", "first_name last_name name email role")
       .skip(skip)
       .limit(limit)
       .sort({ adm_year: -1, name: 1 });
