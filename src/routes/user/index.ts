@@ -5,7 +5,7 @@ import {
   FastifyInstance,
   RouteShorthandOptions,
 } from "fastify";
-import { isAdmin } from "@/middleware/roles";
+import { isAdmin, isAnyStaff, isStaff } from "@/middleware/roles";
 
 import { userCreateSchema, userUpdateSchema, userListSchema, bulkCreateSchema } from "./schema";
 import { createUser, deleteUser, getUser, listUser, updateUser, bulkCreateUsers } from "./service";
@@ -24,7 +24,7 @@ export default async function (fastify: FastifyInstance) {
   fastify.get<{ Params: { id: string } }>("/:id", { preHandler: [isAdmin] }, getUser);
   fastify.delete<{ Params: { id: string } }>("/:id", { preHandler: [isAdmin] }, deleteUser);
   fastify.put<{ Params: { id: string } }>("/:id", { schema: userUpdateSchema, preHandler: [isAdmin] }, updateUser);
-  fastify.get<{ Querystring: { page?: number; limit?: number; role: string; search?: string; } }>("/list", { schema: userListSchema, preHandler: [isAdmin] }, listUser);
+  fastify.get<{ Querystring: { page?: number; limit?: number; role: string; search?: string; } }>("/list", { schema: userListSchema, preHandler: [isAnyStaff] }, listUser);
 
   
 }
