@@ -127,6 +127,10 @@ export const createUser = async (
     // Derive name from first_name + last_name
     const name = `${first_name} ${last_name}`;
 
+    if (profile && typeof profile.batch === "string") {
+      profile.batch = new mongoose.Types.ObjectId(profile.batch as string);
+    }
+
     const user = await User.findByIdAndUpdate(
       userId,
       {
@@ -235,7 +239,11 @@ export const updateUser = async (
     // Profile: merge-update fields using dot-notation to avoid overwriting other profile fields
     if (body.profile) {
       for (const [key, val] of Object.entries(body.profile)) {
-        updatePayload[`profile.${key}`] = val;
+        if (key === "batch" && typeof val === "string") {
+          updatePayload[`profile.${key}`] = new mongoose.Types.ObjectId(val);
+        } else {
+          updatePayload[`profile.${key}`] = val;
+        }
       }
 
       // Special case: parent childID → resolve to User._id
@@ -541,9 +549,9 @@ export const bulkCreateUsers = async (
           if (userData.date_of_birth)  profile.date_of_birth  = userData.date_of_birth;
 
           if (userData.batch) {
-            const batchId = mongoose.Types.ObjectId.isValid(userData.batch)
-              ? new mongoose.Types.ObjectId(batchByObjectId.get(userData.batch))
-              : new mongoose.Types.ObjectId(batchByCode.get(userData.batch.toUpperCase()));
+            const batchId = new mongoose.Types.ObjectId(mongoose.Types.ObjectId.isValid(userData.batch)
+              ? batchByObjectId.get(userData.batch)
+              : batchByCode.get(userData.batch.toUpperCase()));
 
             if (!batchId) {
               await authClient.admin.removeUser({ userId });
