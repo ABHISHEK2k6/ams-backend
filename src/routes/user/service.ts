@@ -166,6 +166,31 @@ const buildDuplicateStudentFieldResponse = async (
   };
 };
 
+const resolveDuplicateStudentResponseFromError = async (
+  error: unknown,
+  profile: Record<string, unknown>,
+  excludeUserId?: string
+): Promise<{ status_code: number; message: string; data: string }> => {
+  const duplicateResponse = await buildDuplicateStudentFieldResponse(profile, excludeUserId);
+
+  // If no detailed duplicate found, use index hint from Mongo duplicate error.
+  if (
+    duplicateResponse.status_code === ADMISSION_DUPLICATE_STATUS_CODE &&
+    duplicateResponse.message === "Admission number already exists"
+  ) {
+    const duplicateField = getDuplicateFieldFromMongoError(error);
+    if (duplicateField === "candidate_code") {
+      return {
+        status_code: CANDIDATE_DUPLICATE_STATUS_CODE,
+        message: "Candidate code already exists",
+        data: "",
+      };
+    }
+  }
+
+  return duplicateResponse;
+};
+
 // ─── GET /user  or  GET /user/:id ─────────────────────────────────────────────
 
 export const getUser = async (
@@ -240,6 +265,8 @@ export const createUser = async (
   request: FastifyRequest,
   reply: FastifyReply
 ) => {
+  let duplicateCheckProfile: Record<string, unknown> | undefined;
+  let duplicateExcludeUserId: string | undefined;
   try {
     const { image, phone, first_name, last_name, gender, profile } = request.body as {
       image?:      string;
@@ -251,6 +278,7 @@ export const createUser = async (
     };
 
     const userId = request.user.id;
+    duplicateExcludeUserId = userId;
 
     // Derive name from first_name + last_name
     const name = `${first_name} ${last_name}`;
@@ -266,6 +294,9 @@ export const createUser = async (
 
     if (profile && typeof profile.batch === "string") {
       profile.batch = new mongoose.Types.ObjectId(profile.batch as string);
+    }
+    if (profile) {
+      duplicateCheckProfile = profile;
     }
 
     if (existingUser.role === "student" && profile) {
@@ -303,23 +334,11 @@ export const createUser = async (
       );
     } catch (updateError) {
       if (isDuplicateKeyError(updateError)) {
-        const duplicateResponse = await buildDuplicateStudentFieldResponse(profile ?? {}, userId);
-
-        // If no detailed duplicate found, fall back to index info from Mongo.
-        if (
-          duplicateResponse.status_code === ADMISSION_DUPLICATE_STATUS_CODE &&
-          duplicateResponse.message === "Admission number already exists"
-        ) {
-          const duplicateField = getDuplicateFieldFromMongoError(updateError);
-          if (duplicateField === "candidate_code") {
-            return reply.status(422).send({
-              status_code: CANDIDATE_DUPLICATE_STATUS_CODE,
-              message: "Candidate code already exists",
-              data: "",
-            });
-          }
-        }
-
+        const duplicateResponse = await resolveDuplicateStudentResponseFromError(
+          updateError,
+          profile ?? {},
+          userId
+        );
         return reply.status(422).send(duplicateResponse);
       }
       throw updateError;
@@ -355,6 +374,16 @@ export const createUser = async (
       data: "",
     });
   } catch (e) {
+    if (isDuplicateKeyError(e) && duplicateCheckProfile) {
+      const duplicateResponse = await resolveDuplicateStudentResponseFromError(
+        e,
+        duplicateCheckProfile,
+        duplicateExcludeUserId
+      );
+
+      return reply.status(422).send(duplicateResponse);
+    }
+
     return reply.status(500).send({
       status_code: 500,
       message: "An error occurred while creating the user profile",
@@ -369,8 +398,11 @@ export const updateUser = async (
   request: FastifyRequest<{ Params: { id?: string } }>,
   reply: FastifyReply
 ) => {
+  let duplicateCheckProfile: Record<string, unknown> | undefined;
+  let duplicateExcludeUserId: string | undefined;
   try {
     const userId = request.params.id || request.user.id;
+    duplicateExcludeUserId = userId;
 
     const body = request.body as {
       password?:   string;
@@ -451,6 +483,7 @@ export const updateUser = async (
         candidate_code: incomingProfile.candidate_code ?? currentProfile.candidate_code,
       };
       mergedStudentProfileForFallback = mergedStudentProfile;
+      duplicateCheckProfile = mergedStudentProfile;
 
       try {
         const { admNumber, candidateCode } = await assertStudentUniqueFields(mergedStudentProfile, userId);
@@ -479,23 +512,11 @@ export const updateUser = async (
             (updatePayload["profile.candidate_code"] as unknown) ?? (existingUser.profile as any)?.candidate_code,
         };
 
-        const duplicateResponse = await buildDuplicateStudentFieldResponse(fallbackProfile, userId);
-
-        // If no detailed duplicate found, fall back to index info from Mongo.
-        if (
-          duplicateResponse.status_code === ADMISSION_DUPLICATE_STATUS_CODE &&
-          duplicateResponse.message === "Admission number already exists"
-        ) {
-          const duplicateField = getDuplicateFieldFromMongoError(updateError);
-          if (duplicateField === "candidate_code") {
-            return reply.status(422).send({
-              status_code: CANDIDATE_DUPLICATE_STATUS_CODE,
-              message: "Candidate code already exists",
-              data: "",
-            });
-          }
-        }
-
+        const duplicateResponse = await resolveDuplicateStudentResponseFromError(
+          updateError,
+          fallbackProfile,
+          userId
+        );
         return reply.status(422).send(duplicateResponse);
       }
       throw updateError;
@@ -510,6 +531,16 @@ export const updateUser = async (
       data: "",
     });
   } catch (e) {
+    if (isDuplicateKeyError(e) && duplicateCheckProfile) {
+      const duplicateResponse = await resolveDuplicateStudentResponseFromError(
+        e,
+        duplicateCheckProfile,
+        duplicateExcludeUserId
+      );
+
+      return reply.status(422).send(duplicateResponse);
+    }
+
     return reply.status(500).send({
       status_code: 500,
       message: "An error occurred while updating the user",
