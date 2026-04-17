@@ -126,7 +126,8 @@ Create a new batch.
 **Body Parameters:**
 | Parameter | Type | Required | Constraints | Description |
 |-----------|------|----------|-------------|-------------|
-| id | string | No | Pattern: `^[0-9]{2}(CSE\|ECE\|IT)$` | Human-readable batch ID (defaults to `${lastTwoDigitsOfAdmYear}${DEPARTMENT}`) |
+| id | string | No | Pattern: `^[0-9]{2}[A-Z]{2,3}[0-9]*$` | Human-readable batch ID (defaults to `${lastTwoDigitsOfAdmYear}${DEPARTMENT}`) |
+| batch_id | string | No | Pattern: `^[0-9]{2}[A-Z]{2,3}[0-9]*$` | Alias for `id` for client compatibility |
 | name | string | Yes | Min length: 1 | Batch name |
 | adm_year | number | Yes | 2000-2100 | Admission year |
 | department | string | Yes | Enum: CSE, ECE, IT | Department code |
@@ -161,7 +162,8 @@ Create a new batch.
 - `422`: Batch with this ID already exists
 
 **Notes:**
-- If `id` is omitted, it is generated as `${lastTwoDigitsOfAdmYear}${DEPARTMENT}` (example: `24CSE`).
+- If `id` or `batch_id` is omitted, it is generated as `${lastTwoDigitsOfAdmYear}${DEPARTMENT}` (example: `24CSE`).
+- Numeric suffixes are supported (example: `24CSE1`, `24CSE2`).
 
 ---
 
@@ -192,7 +194,8 @@ All parameters are optional. Only provide fields you want to update.
 
 | Parameter | Type | Constraints | Description |
 |-----------|------|-------------|-------------|
-| id | string | Pattern: `^[0-9]{2}(CSE\|ECE\|IT)$` | Human-readable batch ID |
+| id | string | Pattern: `^[0-9]{2}[A-Z]{2,3}[0-9]*$` | Human-readable batch ID |
+| batch_id | string | Pattern: `^[0-9]{2}[A-Z]{2,3}[0-9]*$` | Alias for `id` |
 | name | string | Min length: 1 | Batch name |
 | adm_year | number | 2000-2100 | Admission year |
 | department | string | Enum: CSE, ECE, IT | Department code |
@@ -309,6 +312,10 @@ Delete a batch.
 
 7. **Sorting**: Batches are sorted by admission year (descending) and name (ascending) by default.
 
+8. **ID Alias Support**: Both `id` and `batch_id` are accepted in create/update request bodies. If both are provided, `id` is used.
+
+9. **Route Parameter Flexibility**: For `GET`, `PUT`, and `DELETE`, the `:id` route parameter now accepts either MongoDB ObjectId or the human-readable batch code.
+
 ---
 
-**Last Updated:** January 21, 2026
+**Last Updated:** April 16, 2026

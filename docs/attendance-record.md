@@ -19,11 +19,16 @@ Base URL: `/attendance/record`
 
 ## Authentication
 
-All endpoints require authentication via session cookies. Only staff members (teacher, hod, principal, staff, admin) can access these endpoints.
+All endpoints require authentication via session cookies.
+
+- Read endpoints (`GET /attendance/record`, `GET /attendance/record/:id`) are accessible to staff members and students.
+- Write endpoints (`POST`, `PUT`, `DELETE`) are restricted to staff members only.
+- Students can only view their own attendance records.
 
 **Middleware Used:**
 - `authMiddleware` – Verifies user session ([src/middleware/auth.ts](../../src/middleware/auth.ts))
-- `isAnyStaff` – Restricts routes to staff members ([src/middleware/roles.ts](../../src/middleware/roles.ts))
+- `isAnyStaffOrStudent` – Allows read routes for staff and student ([src/middleware/roles.ts](../../src/middleware/roles.ts))
+- `isAnyStaff` – Restricts write routes to staff members ([src/middleware/roles.ts](../../src/middleware/roles.ts))
 
 ---
 
@@ -35,7 +40,7 @@ Retrieve a paginated list of attendance records with optional filtering.
 
 **Endpoint:** `GET /attendance/record`
 
-**Authentication:** Required (Staff only)
+**Authentication:** Required (Staff and Student)
 
 **Query Parameters:**
 | Parameter | Type | Required | Default | Description |
@@ -51,8 +56,11 @@ Retrieve a paginated list of attendance records with optional filtering.
 **Response Codes:**
 - `200` – Success
 - `401` – Unauthorized
-- `403` – Forbidden (not a staff member)
+- `403` – Forbidden (not authorized to view requested data)
 - `500` – Server error
+
+**Student Access Rule:**
+- When called by a student, results are automatically limited to that student's own records, even if a different `student` query parameter is provided.
 
 **Response Example:**
 ```json
@@ -118,7 +126,7 @@ Retrieve details of a specific attendance record.
 
 **Endpoint:** `GET /attendance/record/:id`
 
-**Authentication:** Required (Staff only)
+**Authentication:** Required (Staff and Student)
 
 **Path Parameters:**
 - `id` (required) - Attendance record ID
@@ -129,6 +137,9 @@ Retrieve details of a specific attendance record.
 - `401` – Unauthorized
 - `403` – Forbidden
 - `500` – Server error
+
+**Student Access Rule:**
+- Students can fetch only records where `student` matches their authenticated user ID.
 
 **Response Example:**
 ```json
@@ -565,7 +576,9 @@ The API automatically populates related data:
 ### Authorization
 
 - All routes require authentication
-- Only staff members can access these endpoints
+- Read routes are available to staff and students
+- Write routes are restricted to staff members
+- Students can only view their own attendance records
 - Update and delete operations have additional authorization checks:
   - The marker of the record can modify/delete it
   - Admin, Principal, and HOD can modify/delete any record

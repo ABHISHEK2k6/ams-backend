@@ -1,4 +1,5 @@
 import { FastifyRequest, FastifyReply } from "fastify";
+import mongoose from "mongoose";
 import { Batch } from "@/plugins/db/models/academics.model";
 import { User } from "@/plugins/db/models/auth.model";
 
@@ -16,6 +17,7 @@ interface GetBatchParams {
 interface CreateBatchBody {
   name: string;
   id?: string;
+  batch_id?: string;
   adm_year: number;
   department: "CSE" | "ECE" | "IT";
   staff_advisor: string;
@@ -28,6 +30,7 @@ interface UpdateBatchParams {
 interface UpdateBatchBody {
   name?: string;
   id?: string;
+  batch_id?: string;
   adm_year?: number;
   department?: "CSE" | "ECE" | "IT";
   staff_advisor?: string;
@@ -40,6 +43,23 @@ interface DeleteBatchParams {
 const generateBatchId = (admYear: number, department: string) => {
   const yearSuffix = String(admYear).slice(-2).padStart(2, "0");
   return `${yearSuffix}${department.toUpperCase()}`;
+};
+
+const BATCH_ID_REGEX = /^[0-9]{2}[A-Z]{2,3}[0-9]*$/;
+
+const normalizeBatchId = (value?: string) => {
+  if (!value) return undefined;
+  return value.trim().toUpperCase();
+};
+
+const findBatchByRouteId = async (routeId: string) => {
+  const trimmedId = routeId.trim();
+  if (mongoose.isValidObjectId(trimmedId)) {
+    const byObjectId = await Batch.findById(trimmedId);
+    if (byObjectId) return byObjectId;
+  }
+
+  return Batch.findOne({ id: trimmedId.toUpperCase() });
 };
 
 export const listBatchesHandler = async (
@@ -92,13 +112,7 @@ export const getBatchByIdHandler = async (
   try {
     const { id } = request.params as GetBatchParams;
 
-    const batch = await Batch.findById(id).populate({
-      path: "staff_advisor",
-      populate: {
-        path: "user",
-        select: "first_name last_name email",
-      },
-    });
+    const batch = await findBatchByRouteId(id);
 
     if (!batch) {
       return reply.status(404).send({
@@ -108,10 +122,15 @@ export const getBatchByIdHandler = async (
       });
     }
 
+    const populatedBatch = await Batch.findById(batch._id).populate(
+      "staff_advisor",
+      "first_name last_name name email role"
+    );
+
     return reply.send({
       status_code: 200,
       message: "Batch retrieved successfully",
-      data: batch,
+      data: populatedBatch,
     });
   } catch (error) {
     return reply.status(500).send({
@@ -127,9 +146,18 @@ export const createBatchHandler = async (
   reply: FastifyReply
 ) => {
   try {
-    const { name, adm_year, department, staff_advisor, id } =
+    const { name, adm_year, department, staff_advisor, id, batch_id } =
       request.body as CreateBatchBody;
-    const batchId = (id || generateBatchId(adm_year, department)).toUpperCase();
+    const requestedId = normalizeBatchId(id || batch_id);
+    const batchId = requestedId || generateBatchId(adm_year, department);
+
+    if (!BATCH_ID_REGEX.test(batchId)) {
+      return reply.status(422).send({
+        status_code: 422,
+        message: "Invalid batch ID format. Expected YY[A-Z]{2,3} with optional numeric suffix (e.g., 24CSE1)",
+        data: "",
+      });
+    }
 
     // Check if staff advisor user exists and is a staff role
     const staffUser = await User.findById(staff_advisor);
@@ -168,13 +196,10 @@ export const createBatchHandler = async (
       staff_advisor,
     });
 
-    const populatedBatch = await Batch.findById(batch._id).populate({
-      path: "staff_advisor",
-      populate: {
-        path: "user",
-        select: "first_name last_name email",
-      },
-    });
+    const populatedBatch = await Batch.findById(batch._id).populate(
+      "staff_advisor",
+      "first_name last_name name email role"
+    );
 
     return reply.status(201).send({
       status_code: 201,
@@ -198,12 +223,23 @@ export const updateBatchHandler = async (
     const { id } = request.params as UpdateBatchParams;
     const updateData = request.body as UpdateBatchBody;
 
-    if (updateData.id) {
-      updateData.id = updateData.id.toUpperCase();
+    const requestedId = normalizeBatchId(updateData.id || updateData.batch_id);
+    delete updateData.batch_id;
+
+    if (requestedId) {
+      if (!BATCH_ID_REGEX.test(requestedId)) {
+        return reply.status(422).send({
+          status_code: 422,
+          message: "Invalid batch ID format. Expected YY[A-Z]{2,3} with optional numeric suffix (e.g., 24CSE1)",
+          data: "",
+        });
+      }
+
+      updateData.id = requestedId;
     }
 
     // Check if batch exists
-    const batch = await Batch.findById(id);
+    const batch = await findBatchByRouteId(id);
     if (!batch) {
       return reply.status(404).send({
         status_code: 404,
@@ -232,7 +268,7 @@ export const updateBatchHandler = async (
       const existingBatch = await Batch.findOne({
         name: nameToCheck,
         adm_year: yearToCheck,
-        _id: { $ne: id },
+        _id: { $ne: batch._id },
       });
 
       if (existingBatch) {
@@ -247,7 +283,7 @@ export const updateBatchHandler = async (
     if (updateData.id) {
       const existingBatchId = await Batch.findOne({
         id: updateData.id,
-        _id: { $ne: id },
+        _id: { $ne: batch._id },
       });
 
       if (existingBatchId) {
@@ -259,21 +295,43 @@ export const updateBatchHandler = async (
       }
     }
 
-    const updatedBatch = await Batch.findByIdAndUpdate(id, updateData, {
+    const updatedBatch = await Batch.findByIdAndUpdate(batch._id, updateData, {
       new: true,
       runValidators: true,
-    }).populate({
-      path: "staff_advisor",
-      populate: {
-        path: "user",
-        select: "first_name last_name email",
-      },
     });
+
+    if (!updatedBatch) {
+      return reply.status(404).send({
+        status_code: 404,
+        message: "Batch not found",
+        data: "",
+      });
+    }
+
+    let responseBatch = updatedBatch;
+    try {
+      const populatedBatch = await Batch.findById(updatedBatch._id).populate(
+        "staff_advisor",
+        "first_name last_name name email role"
+      );
+
+      if (populatedBatch) {
+        responseBatch = populatedBatch;
+      }
+    } catch (populateError) {
+      request.log.warn(
+        {
+          err: populateError,
+          batchId: updatedBatch._id,
+        },
+        "Batch updated successfully but staff_advisor populate failed; returning unpopulated document"
+      );
+    }
 
     return reply.send({
       status_code: 200,
       message: "Batch updated successfully",
-      data: updatedBatch,
+      data: responseBatch,
     });
   } catch (error) {
     return reply.status(500).send({
@@ -291,15 +349,16 @@ export const deleteBatchHandler = async (
   try {
     const { id } = request.params as DeleteBatchParams;
 
-    const batch = await Batch.findByIdAndDelete(id);
-
-    if (!batch) {
+    const batchToDelete = await findBatchByRouteId(id);
+    if (!batchToDelete) {
       return reply.status(404).send({
         status_code: 404,
         message: "Batch not found",
         data: "",
       });
     }
+
+    const batch = await Batch.findByIdAndDelete(batchToDelete._id);
 
     return reply.send({
       status_code: 200,

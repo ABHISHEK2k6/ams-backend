@@ -1,13 +1,40 @@
 import { FastifyRequest, FastifyReply } from "fastify";
+import mongoose from "mongoose";
 import { AttendanceSession } from "@/plugins/db/models/attendance.model";
 import { User } from "@/plugins/db/models/auth.model";
+
+const STAFF_ROLES = ["teacher", "hod", "principal", "admin", "staff"];
 
 export const createSession = async (
   request: FastifyRequest,
   reply: FastifyReply
 ) => {
   try {
-    const userId = request.user.id;
+    const authUserId = request.user?.id;
+    if (!authUserId) {
+      return reply.status(401).send({
+        status_code: 401,
+        message: "Unauthorized - Invalid or expired session",
+        data: "",
+      });
+    }
+
+    const creatorUser = await User.findById(authUserId);
+    if (!creatorUser) {
+      return reply.status(404).send({
+        status_code: 404,
+        message: "Authenticated user profile not found",
+        data: "",
+      });
+    }
+
+    if (!STAFF_ROLES.includes(creatorUser.role)) {
+      return reply.status(403).send({
+        status_code: 403,
+        message: "You are not authorized to create attendance sessions",
+        data: "",
+      });
+    }
 
     const { batch, subject, start_time, end_time, hours_taken, session_type } = request.body as {
       batch: string;
@@ -21,7 +48,7 @@ export const createSession = async (
     const newSession = new AttendanceSession({
       batch,
       subject,
-      created_by: userId,
+      created_by: creatorUser._id,
       start_time: new Date(start_time),
       end_time: new Date(end_time),
       hours_taken,
@@ -32,10 +59,30 @@ export const createSession = async (
 
     await newSession.save();
 
+    let responseSession: any = newSession;
+    try {
+      const populatedSession = await AttendanceSession.findById(newSession._id)
+        .populate("batch", "name id adm_year department")
+        .populate("subject", "name subject_code sem type")
+        .populate("created_by", "name email first_name last_name role");
+
+      if (populatedSession) {
+        responseSession = populatedSession;
+      }
+    } catch (populateError) {
+      request.log.warn(
+        {
+          err: populateError,
+          sessionId: newSession._id,
+        },
+        "Attendance session created successfully but populate failed; returning unpopulated document"
+      );
+    }
+
     return reply.status(201).send({
       status_code: 201,
       message: "Attendance session created successfully",
-      data: newSession,
+      data: responseSession,
     });
   } catch (error) {
     return reply.status(500).send({
@@ -162,12 +209,15 @@ export const getRecentSessions = async (
 ) => {
   try {
     const userId = request.user.id;
+    const createdByMatch = mongoose.isValidObjectId(userId)
+      ? new mongoose.Types.ObjectId(userId)
+      : userId;
 
     // Use aggregation to get unique batch-subject combinations
     const uniqueSessions = await AttendanceSession.aggregate([
       {
         $match: {
-          created_by: userId,
+          created_by: createdByMatch,
         },
       },
       {
@@ -294,21 +344,40 @@ export const updateSession = async (
       sessionId,
       updateData,
       { new: true }
-    )
-      .populate("batch", "name code year")
-      .populate("subject", "name code")
-      .populate({
-        path: "created_by",
-        populate: {
-          path: "user",
-          select: "name email first_name last_name",
-        },
+    );
+
+    if (!updatedSession) {
+      return reply.status(404).send({
+        status_code: 404,
+        message: "Attendance session not found",
+        data: "",
       });
+    }
+
+    let responseSession: any = updatedSession;
+    try {
+      const populatedSession = await AttendanceSession.findById(updatedSession._id)
+        .populate("batch", "name id adm_year department")
+        .populate("subject", "name subject_code sem type")
+        .populate("created_by", "name email first_name last_name role");
+
+      if (populatedSession) {
+        responseSession = populatedSession;
+      }
+    } catch (populateError) {
+      request.log.warn(
+        {
+          err: populateError,
+          sessionId: updatedSession._id,
+        },
+        "Attendance session updated successfully but populate failed; returning unpopulated document"
+      );
+    }
 
     return reply.send({
       status_code: 200,
       message: "Attendance session updated successfully",
-      data: updatedSession,
+      data: responseSession,
     });
   } catch (error) {
     return reply.status(500).send({

@@ -5,7 +5,7 @@ import {
   FastifyInstance,
   RouteShorthandOptions,
 } from "fastify";
-import { isAdmin, isPrincipal, isHOD, isAnyStaff } from "@/middleware/roles";
+import { isAnyStaff, isAnyStaffOrStudent } from "@/middleware/roles";
 import { 
   createRecord,
   createBulkRecords, 
@@ -38,11 +38,11 @@ export default async function (fastify: FastifyInstance) {
     } 
   }>("/", { 
     schema: recordListSchema, 
-    preHandler: [isAnyStaff] 
+    preHandler: [isAnyStaffOrStudent] 
   }, listRecords);
 
   fastify.get<{ Params: { id: string } }>("/:id", { 
-    preHandler: [isAnyStaff] 
+    preHandler: [isAnyStaffOrStudent] 
   }, getRecord);
 
   // Create single attendance record

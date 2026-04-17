@@ -28,7 +28,8 @@ export const createBatchSchema: RouteShorthandOptions["schema"] = {
     required: ["name", "adm_year", "department", "staff_advisor"],
     properties: {
       name: { type: "string", minLength: 1 },
-      id: { type: "string" },
+      id: { type: "string", pattern: "^[0-9]{2}[A-Z]{2,3}[0-9]*$" },
+      batch_id: { type: "string", pattern: "^[0-9]{2}[A-Z]{2,3}[0-9]*$" },
       adm_year: { type: "number", minimum: 2000, maximum: 2100 },
       department: { type: "string", enum: ["CSE", "ECE", "IT"] },
       staff_advisor: { type: "string" }, // Teacher ObjectId
@@ -48,7 +49,8 @@ export const updateBatchSchema: RouteShorthandOptions["schema"] = {
     type: "object",
     properties: {
       name: { type: "string", minLength: 1 },
-      id: { type: "string" },
+      id: { type: "string", pattern: "^[0-9]{2}[A-Z]{2,3}[0-9]*$" },
+      batch_id: { type: "string", pattern: "^[0-9]{2}[A-Z]{2,3}[0-9]*$" },
       adm_year: { type: "number", minimum: 2000, maximum: 2100 },
       department: { type: "string", enum: ["CSE", "ECE", "IT"] },
       staff_advisor: { type: "string" }, // Teacher ObjectId

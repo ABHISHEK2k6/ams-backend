@@ -248,7 +248,7 @@ Retrieve details of a specific attendance session.
 
 ### Create Attendance Session
 
-Create a new attendance session. The `created_by` field is automatically set to the authenticated teacher.
+Create a new attendance session. The `created_by` field is automatically set to the authenticated user (staff role).
 
 **Endpoint:** `POST /attendance/session`
 
@@ -279,7 +279,7 @@ Create a new attendance session. The `created_by` field is automatically set to 
 **Response Codes:**
 - `201` – Created
 - `400` – Invalid request body
-- `404` – Teacher profile not found
+- `404` – Authenticated user profile not found
 - `401` – Unauthorized
 - `403` – Forbidden
 - `500` – Server error
@@ -424,7 +424,7 @@ The `AttendanceSession` model represents a class session for tracking attendance
   _id: string,
   batch: ObjectId,              // References Batch model
   subject: ObjectId,            // References Subject model
-  created_by: ObjectId,         // References Teacher model
+  created_by: ObjectId,         // References User model
   start_time: Date,             // Session start time
   end_time: Date,               // Session end time
   hours_taken: number,          // Duration in hours
@@ -485,7 +485,7 @@ or
 ```json
 {
   "status_code": 404,
-  "message": "Teacher profile not found",
+  "message": "Authenticated user profile not found",
   "data": ""
 }
 ```
@@ -506,9 +506,9 @@ or
 ### Automatic Field Population
 
 The API automatically populates related data:
-- **batch**: Includes `name`, `code`, and `year`
-- **subject**: Includes `name` and `code`
-- **created_by**: Includes teacher details with nested user information (name, email, etc.)
+- **batch**: Includes `name`, `id`, `adm_year`, and `department`
+- **subject**: Includes `name`, `subject_code`, `sem`, and `type`
+- **created_by**: Includes user details directly (`name`, `email`, `first_name`, `last_name`, `role`)
 
 ### Authorization
 
@@ -534,7 +534,7 @@ The list endpoint supports multiple filters that can be combined:
 
 ### Best Practices
 
-1. **Always validate teacher profile**: The API checks if the authenticated user has a teacher profile before creating sessions
+1. **Ensure staff role access**: Only staff roles can create sessions, and ownership is mapped from the authenticated user
 2. **Use proper date formats**: Session dates should be in ISO 8601 format
 3. **Set accurate hours**: The `hours_taken` field should accurately reflect the session duration
 4. **Choose appropriate session type**: Use the correct type (`regular`, `extra`, `practical`) for proper session categorization
@@ -543,5 +543,5 @@ The list endpoint supports multiple filters that can be combined:
 
 - **Batch**: Referenced in the `batch` field
 - **Subject**: Referenced in the `subject` field  
-- **Teacher**: Referenced in the `created_by` field
+- **User**: Referenced in the `created_by` field
 - **AttendanceRecord**: Links to this session for individual student attendance tracking

@@ -3,7 +3,7 @@
 ## Overview
 The Subject API allows management of course subjects in the AMS system. Subjects contain information about courses including semester, subject code, type (Theory/Practical), marks distribution, and assigned faculty members.
 
-All endpoints require authentication. List and retrieve operations are accessible to any staff member, while create, update, and delete operations require admin privileges.
+All endpoints require authentication. List and retrieve operations are accessible to staff members and students, while create, update, and delete operations require admin privileges.
 
 ## Base URL
 ```
@@ -20,7 +20,7 @@ Retrieve a paginated list of all subjects with optional filtering.
 
 **Endpoint:** `GET /academics/subject`
 
-**Access:** Any staff (teacher, hod, principal, staff, admin)
+**Access:** Staff and student (teacher, hod, principal, staff, admin, student)
 
 **Query Parameters:**
 | Parameter | Type | Required | Default | Description |
@@ -65,7 +65,7 @@ Retrieve details of a specific subject.
 
 **Endpoint:** `GET /academics/subject/:id`
 
-**Access:** Any staff (teacher, hod, principal, staff, admin)
+**Access:** Staff and student (teacher, hod, principal, staff, admin, student)
 
 **URL Parameters:**
 | Parameter | Type | Required | Description |
@@ -314,4 +314,4 @@ Delete a subject.
 
 ---
 
-**Last Updated:** January 22, 2026
+**Last Updated:** April 15, 2026

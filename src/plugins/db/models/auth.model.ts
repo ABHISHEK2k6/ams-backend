@@ -62,6 +62,29 @@ const userSchema = new Schema(
   { collection: "user" },
 );
 
+// Enforce unique student onboarding identifiers when present.
+userSchema.index(
+  { "profile.adm_number": 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      role: "student",
+      "profile.adm_number": { $exists: true, $type: "string" },
+    },
+  }
+);
+
+userSchema.index(
+  { "profile.candidate_code": 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      role: "student",
+      "profile.candidate_code": { $exists: true, $type: "string" },
+    },
+  }
+);
+
 // ─── Auth supporting collections (Better-Auth managed) ──────────────────────
 
 const sessionSchema = new Schema(

@@ -7,7 +7,14 @@ const {Schema , model } = mongoose;
 const batchSchema = new Schema(
     {
         name : {type: String, required : true},
-        id: { type: String, required: true, unique: true, uppercase: true, trim: true },
+        id: {
+            type: String,
+            required: true,
+            unique: true,
+            uppercase: true,
+            trim: true,
+            match: [/^[0-9]{2}[A-Z]{2,3}[0-9]*$/, "Invalid batch id format"],
+        },
         adm_year: { type: Number, required: true },
         department: { 
 			type: String, 

@@ -148,6 +148,6 @@ For detailed information about specific endpoints, refer to the individual API d
 
 ---
 
-**Last Updated**: April 1, 2026  
+**Last Updated**: April 16, 2026  
 **API Version**: 1.0  
 **Base URL**: `https://api.ams.mulearn.uck.ac.in`

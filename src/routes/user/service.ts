@@ -38,6 +38,111 @@ const buildUserPayload = (user: any) => ({
 const STAFF_ROLES = ["teacher", "principal", "hod", "admin", "staff"] as const;
 const isStaffRole = (role: string) => (STAFF_ROLES as readonly string[]).includes(role);
 
+const ADMISSION_DUPLICATE_STATUS_CODE = 4221;
+const CANDIDATE_DUPLICATE_STATUS_CODE = 4222;
+const BOTH_DUPLICATE_STATUS_CODE = 4223;
+
+class StudentUniqueFieldError extends Error {
+  statusCode: number;
+  field: "adm_number" | "candidate_code" | "both";
+
+  constructor(field: "adm_number" | "candidate_code" | "both", message: string) {
+    super(message);
+    this.name = "StudentUniqueFieldError";
+    this.field = field;
+    if (field === "adm_number") {
+      this.statusCode = ADMISSION_DUPLICATE_STATUS_CODE;
+    } else if (field === "candidate_code") {
+      this.statusCode = CANDIDATE_DUPLICATE_STATUS_CODE;
+    } else {
+      this.statusCode = BOTH_DUPLICATE_STATUS_CODE;
+    }
+  }
+}
+
+const normalizeStudentCode = (value: unknown): string | undefined => {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed.toUpperCase() : undefined;
+};
+
+const isDuplicateKeyError = (error: unknown): boolean => {
+  return typeof error === "object" && error !== null && (error as { code?: number }).code === 11000;
+};
+
+const getDuplicateFieldFromMongoError = (
+  error: unknown
+): "adm_number" | "candidate_code" | undefined => {
+  if (!isDuplicateKeyError(error)) return undefined;
+
+  const keyPattern = (error as { keyPattern?: Record<string, number> }).keyPattern ?? {};
+  const keys = Object.keys(keyPattern);
+  if (keys.some((k) => k.includes("profile.adm_number"))) return "adm_number";
+  if (keys.some((k) => k.includes("profile.candidate_code"))) return "candidate_code";
+
+  const keyValue = (error as { keyValue?: Record<string, unknown> }).keyValue ?? {};
+  const keyValueKeys = Object.keys(keyValue);
+  if (keyValueKeys.some((k) => k.includes("profile.adm_number"))) return "adm_number";
+  if (keyValueKeys.some((k) => k.includes("profile.candidate_code"))) return "candidate_code";
+
+  return undefined;
+};
+
+const assertStudentUniqueFields = async (
+  profile: Record<string, unknown>,
+  excludeUserId?: string
+): Promise<{ admNumber?: string; candidateCode?: string }> => {
+  const admNumber = normalizeStudentCode(profile.adm_number);
+  const candidateCode = normalizeStudentCode(profile.candidate_code);
+
+  if (!admNumber && !candidateCode) {
+    return { admNumber, candidateCode };
+  }
+
+  const orClauses: Record<string, unknown>[] = [];
+  if (admNumber) orClauses.push({ "profile.adm_number": admNumber });
+  if (candidateCode) orClauses.push({ "profile.candidate_code": candidateCode });
+
+  const filter: Record<string, unknown> = {
+    role: "student",
+    $or: orClauses,
+  };
+
+  if (excludeUserId) {
+    filter._id = { $ne: new mongoose.Types.ObjectId(excludeUserId) };
+  }
+
+  const existingStudents = await User.find(filter)
+    .select("profile.adm_number profile.candidate_code")
+    .lean();
+
+  if (existingStudents.length > 0) {
+    const hasAdmDuplicate = Boolean(
+      admNumber &&
+      existingStudents.some((student: any) => normalizeStudentCode(student?.profile?.adm_number) === admNumber)
+    );
+    const hasCandidateDuplicate = Boolean(
+      candidateCode &&
+      existingStudents.some((student: any) => normalizeStudentCode(student?.profile?.candidate_code) === candidateCode)
+    );
+
+    if (hasAdmDuplicate && hasCandidateDuplicate) {
+      throw new StudentUniqueFieldError(
+        "both",
+        "Admission number and candidate code already exist for another student"
+      );
+    }
+    if (hasAdmDuplicate) {
+      throw new StudentUniqueFieldError("adm_number", "Admission number already exists for another student");
+    }
+    if (hasCandidateDuplicate) {
+      throw new StudentUniqueFieldError("candidate_code", "Candidate code already exists for another student");
+    }
+  }
+
+  return { admNumber, candidateCode };
+};
+
 // ─── GET /user  or  GET /user/:id ─────────────────────────────────────────────
 
 export const getUser = async (
@@ -127,24 +232,69 @@ export const createUser = async (
     // Derive name from first_name + last_name
     const name = `${first_name} ${last_name}`;
 
+    const existingUser = await User.findById(userId).select("role").lean();
+    if (!existingUser) {
+      return reply.status(404).send({
+        status_code: 404,
+        message: "User not found",
+        data: "",
+      });
+    }
+
     if (profile && typeof profile.batch === "string") {
       profile.batch = new mongoose.Types.ObjectId(profile.batch as string);
     }
 
-    const user = await User.findByIdAndUpdate(
-      userId,
-      {
-        name,
-        first_name,
-        last_name,
-        phone,
-        image,
-        gender,
-        updatedAt: new Date(),
-        ...(profile ? { profile } : {}),
-      },
-      { new: true }
-    );
+    if (existingUser.role === "student" && profile) {
+      try {
+        const { admNumber, candidateCode } = await assertStudentUniqueFields(profile, userId);
+        if (admNumber) profile.adm_number = admNumber;
+        if (candidateCode) profile.candidate_code = candidateCode;
+      } catch (validationError) {
+        if (validationError instanceof StudentUniqueFieldError) {
+          return reply.status(422).send({
+            status_code: validationError.statusCode,
+            message: validationError.message,
+            data: "",
+          });
+        }
+        throw validationError;
+      }
+    }
+
+    let user;
+    try {
+      user = await User.findByIdAndUpdate(
+        userId,
+        {
+          name,
+          first_name,
+          last_name,
+          phone,
+          image,
+          gender,
+          updatedAt: new Date(),
+          ...(profile ? { profile } : {}),
+        },
+        { new: true }
+      );
+    } catch (updateError) {
+      if (isDuplicateKeyError(updateError)) {
+        const duplicateField = getDuplicateFieldFromMongoError(updateError);
+        const statusCode = duplicateField === "candidate_code"
+          ? CANDIDATE_DUPLICATE_STATUS_CODE
+          : ADMISSION_DUPLICATE_STATUS_CODE;
+        const message = duplicateField === "candidate_code"
+          ? "Candidate code already exists"
+          : "Admission number already exists";
+        return reply.status(422).send({
+          status_code: statusCode,
+          message,
+          data: "",
+        });
+      }
+      throw updateError;
+    }
 
     if (!user) {
       return reply.status(404).send({
@@ -204,6 +354,11 @@ export const updateUser = async (
       profile?:    Record<string, unknown>;
     };
 
+    const existingUser = await User.findById(userId).select("first_name last_name role profile").lean();
+    if (!existingUser) {
+      return reply.status(404).send({ status_code: 404, message: "User not found", data: "" });
+    }
+
     // Build the update payload
     const updatePayload: Record<string, unknown> = { updatedAt: new Date() };
 
@@ -216,12 +371,8 @@ export const updateUser = async (
 
     // Derive name whenever first or last name is updated
     if (body.first_name != null || body.last_name != null) {
-      const existing = await User.findById(userId).select("first_name last_name").lean();
-      if (!existing) {
-        return reply.status(404).send({ status_code: 404, message: "User not found", data: "" });
-      }
-      const newFirst = body.first_name ?? existing.first_name;
-      const newLast  = body.last_name  ?? existing.last_name;
+      const newFirst = body.first_name ?? existingUser.first_name;
+      const newLast  = body.last_name  ?? existingUser.last_name;
       updatePayload.name = `${newFirst} ${newLast}`;
     }
 
@@ -261,7 +412,51 @@ export const updateUser = async (
       }
     }
 
-    const updated = await User.findByIdAndUpdate(userId, updatePayload, { new: true });
+    const targetRole = body.role ?? existingUser.role;
+    if (targetRole === "student") {
+      const currentProfile = (existingUser.profile ?? {}) as Record<string, unknown>;
+      const incomingProfile = (body.profile ?? {}) as Record<string, unknown>;
+      const mergedStudentProfile: Record<string, unknown> = {
+        adm_number: incomingProfile.adm_number ?? currentProfile.adm_number,
+        candidate_code: incomingProfile.candidate_code ?? currentProfile.candidate_code,
+      };
+
+      try {
+        const { admNumber, candidateCode } = await assertStudentUniqueFields(mergedStudentProfile, userId);
+        if (admNumber) updatePayload["profile.adm_number"] = admNumber;
+        if (candidateCode) updatePayload["profile.candidate_code"] = candidateCode;
+      } catch (validationError) {
+        if (validationError instanceof StudentUniqueFieldError) {
+          return reply.status(422).send({
+            status_code: validationError.statusCode,
+            message: validationError.message,
+            data: "",
+          });
+        }
+        throw validationError;
+      }
+    }
+
+    let updated;
+    try {
+      updated = await User.findByIdAndUpdate(userId, updatePayload, { new: true });
+    } catch (updateError) {
+      if (isDuplicateKeyError(updateError)) {
+        const duplicateField = getDuplicateFieldFromMongoError(updateError);
+        const statusCode = duplicateField === "candidate_code"
+          ? CANDIDATE_DUPLICATE_STATUS_CODE
+          : ADMISSION_DUPLICATE_STATUS_CODE;
+        const message = duplicateField === "candidate_code"
+          ? "Candidate code already exists"
+          : "Admission number already exists";
+        return reply.status(422).send({
+          status_code: statusCode,
+          message,
+          data: "",
+        });
+      }
+      throw updateError;
+    }
     if (!updated) {
       return reply.status(404).send({ status_code: 404, message: "User not found", data: "" });
     }
@@ -510,6 +705,95 @@ export const bulkCreateUsers = async (
       return true;
     });
 
+    // Pre-check student admission/candidate uniqueness against DB and request payload
+    const requestAdmNumbers = new Set<string>();
+    const requestCandidateCodes = new Set<string>();
+
+    const uniqueFinalUsers = finalUsers.filter(({ userData, userEmail, userName }) => {
+      if (userData.role !== "student") return true;
+
+      const admNumber = normalizeStudentCode(userData.adm_number);
+      const candidateCode = normalizeStudentCode(userData.candidate_code);
+
+      if (admNumber && requestAdmNumbers.has(admNumber)) {
+        results.failed.push({
+          email: userEmail || userName,
+          error: "Admission number already exists in this bulk request",
+        });
+        return false;
+      }
+
+      if (candidateCode && requestCandidateCodes.has(candidateCode)) {
+        results.failed.push({
+          email: userEmail || userName,
+          error: "Candidate code already exists in this bulk request",
+        });
+        return false;
+      }
+
+      if (admNumber) {
+        requestAdmNumbers.add(admNumber);
+        userData.adm_number = admNumber;
+      }
+
+      if (candidateCode) {
+        requestCandidateCodes.add(candidateCode);
+        userData.candidate_code = candidateCode;
+      }
+
+      return true;
+    });
+
+    if (requestAdmNumbers.size > 0 || requestCandidateCodes.size > 0) {
+      const existingStudents = await User.find({
+        role: "student",
+        $or: [
+          ...(requestAdmNumbers.size > 0 ? [{ "profile.adm_number": { $in: [...requestAdmNumbers] } }] : []),
+          ...(requestCandidateCodes.size > 0 ? [{ "profile.candidate_code": { $in: [...requestCandidateCodes] } }] : []),
+        ],
+      })
+        .select("profile.adm_number profile.candidate_code")
+        .lean();
+
+      const existingAdmSet = new Set(
+        existingStudents
+          .map((u: any) => normalizeStudentCode(u?.profile?.adm_number))
+          .filter(Boolean) as string[]
+      );
+      const existingCandidateSet = new Set(
+        existingStudents
+          .map((u: any) => normalizeStudentCode(u?.profile?.candidate_code))
+          .filter(Boolean) as string[]
+      );
+
+      for (const { userData, userEmail, userName } of uniqueFinalUsers) {
+        if (userData.role !== "student") continue;
+
+        const admNumber = normalizeStudentCode(userData.adm_number);
+        const candidateCode = normalizeStudentCode(userData.candidate_code);
+
+        if (admNumber && existingAdmSet.has(admNumber)) {
+          results.failed.push({
+            email: userEmail || userName,
+            error: "Admission number already exists",
+          });
+        }
+
+        if (candidateCode && existingCandidateSet.has(candidateCode)) {
+          results.failed.push({
+            email: userEmail || userName,
+            error: "Candidate code already exists",
+          });
+        }
+      }
+    }
+
+    const blockedEmails = new Set(results.failed.map((f) => f.email));
+    const finalUniqueUsers = uniqueFinalUsers.filter(({ userEmail, userName }) => {
+      const key = userEmail || userName;
+      return !blockedEmails.has(key);
+    });
+
     // Preload batches for student lookups
     const batchByObjectId = new Map<string, string>();
     const batchByCode     = new Map<string, string>();
@@ -520,7 +804,7 @@ export const bulkCreateUsers = async (
     }
 
     // Process each user
-    for (const { userData, userName, userEmail } of finalUsers) {
+    for (const { userData, userName, userEmail } of finalUniqueUsers) {
       try {
         const password = userData.password || Math.random().toString(36).slice(-12) + "A1!";
 
@@ -573,9 +857,12 @@ export const bulkCreateUsers = async (
         } catch (updateErr) {
           await authClient.admin.removeUser({ userId });
           await User.findByIdAndDelete(userId);
+          const profileErrorMessage = isDuplicateKeyError(updateErr)
+            ? "Admission number or candidate code already exists"
+            : (updateErr instanceof Error ? updateErr.message : "Unknown error");
           results.failed.push({
             email: userEmail,
-            error: "Profile update failed: " + (updateErr instanceof Error ? updateErr.message : "Unknown error"),
+            error: "Profile update failed: " + profileErrorMessage,
           });
           continue;
         }

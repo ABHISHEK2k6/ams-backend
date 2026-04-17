@@ -1,6 +1,5 @@
 import { FastifyRequest, FastifyReply } from "fastify";
 import { AttendanceRecord, AttendanceSession } from "@/plugins/db/models/attendance.model";
-import { User } from "@/plugins/db/models/auth.model";
 
 export const createRecord = async (
   request: FastifyRequest,
@@ -131,6 +130,8 @@ export const getRecord = async (
 ) => {
   try {
     const recordId = request.params.id;
+    const userId = request.user.id;
+    const userRole = request.user.role;
 
     const record = await AttendanceRecord.findById(recordId)
       .populate("student", "name email first_name last_name")
@@ -147,6 +148,15 @@ export const getRecord = async (
       return reply.status(404).send({
         status_code: 404,
         message: "Attendance record not found",
+        data: "",
+      });
+    }
+
+    // Students can view only their own attendance record.
+    if (userRole === "student" && record.student.toString() !== userId.toString()) {
+      return reply.status(403).send({
+        status_code: 403,
+        message: "You are not authorized to view this attendance record",
         data: "",
       });
     }
@@ -180,6 +190,8 @@ export const listRecords = async (
   reply: FastifyReply
 ) => {
   try {
+    const userId = request.user.id;
+    const userRole = request.user.role;
     const { page = 1, limit = 10, session, student, status, from_date, to_date } = request.query;
 
     // Build filter object
@@ -191,6 +203,11 @@ export const listRecords = async (
     
     if (student) {
       filter.student = student;
+    }
+
+    // Students can list only their own attendance records.
+    if (userRole === "student") {
+      filter.student = userId;
     }
     
     if (status) {
