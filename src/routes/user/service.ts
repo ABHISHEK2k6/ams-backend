@@ -143,6 +143,29 @@ const assertStudentUniqueFields = async (
   return { admNumber, candidateCode };
 };
 
+const buildDuplicateStudentFieldResponse = async (
+  profile: Record<string, unknown>,
+  excludeUserId?: string
+): Promise<{ status_code: number; message: string; data: string }> => {
+  try {
+    await assertStudentUniqueFields(profile, excludeUserId);
+  } catch (validationError) {
+    if (validationError instanceof StudentUniqueFieldError) {
+      return {
+        status_code: validationError.statusCode,
+        message: validationError.message,
+        data: "",
+      };
+    }
+  }
+
+  return {
+    status_code: ADMISSION_DUPLICATE_STATUS_CODE,
+    message: "Admission number already exists",
+    data: "",
+  };
+};
+
 // ─── GET /user  or  GET /user/:id ─────────────────────────────────────────────
 
 export const getUser = async (
@@ -280,18 +303,24 @@ export const createUser = async (
       );
     } catch (updateError) {
       if (isDuplicateKeyError(updateError)) {
-        const duplicateField = getDuplicateFieldFromMongoError(updateError);
-        const statusCode = duplicateField === "candidate_code"
-          ? CANDIDATE_DUPLICATE_STATUS_CODE
-          : ADMISSION_DUPLICATE_STATUS_CODE;
-        const message = duplicateField === "candidate_code"
-          ? "Candidate code already exists"
-          : "Admission number already exists";
-        return reply.status(422).send({
-          status_code: statusCode,
-          message,
-          data: "",
-        });
+        const duplicateResponse = await buildDuplicateStudentFieldResponse(profile ?? {}, userId);
+
+        // If no detailed duplicate found, fall back to index info from Mongo.
+        if (
+          duplicateResponse.status_code === ADMISSION_DUPLICATE_STATUS_CODE &&
+          duplicateResponse.message === "Admission number already exists"
+        ) {
+          const duplicateField = getDuplicateFieldFromMongoError(updateError);
+          if (duplicateField === "candidate_code") {
+            return reply.status(422).send({
+              status_code: CANDIDATE_DUPLICATE_STATUS_CODE,
+              message: "Candidate code already exists",
+              data: "",
+            });
+          }
+        }
+
+        return reply.status(422).send(duplicateResponse);
       }
       throw updateError;
     }
@@ -413,6 +442,7 @@ export const updateUser = async (
     }
 
     const targetRole = body.role ?? existingUser.role;
+    let mergedStudentProfileForFallback: Record<string, unknown> | undefined;
     if (targetRole === "student") {
       const currentProfile = (existingUser.profile ?? {}) as Record<string, unknown>;
       const incomingProfile = (body.profile ?? {}) as Record<string, unknown>;
@@ -420,6 +450,7 @@ export const updateUser = async (
         adm_number: incomingProfile.adm_number ?? currentProfile.adm_number,
         candidate_code: incomingProfile.candidate_code ?? currentProfile.candidate_code,
       };
+      mergedStudentProfileForFallback = mergedStudentProfile;
 
       try {
         const { admNumber, candidateCode } = await assertStudentUniqueFields(mergedStudentProfile, userId);
@@ -442,18 +473,30 @@ export const updateUser = async (
       updated = await User.findByIdAndUpdate(userId, updatePayload, { new: true });
     } catch (updateError) {
       if (isDuplicateKeyError(updateError)) {
-        const duplicateField = getDuplicateFieldFromMongoError(updateError);
-        const statusCode = duplicateField === "candidate_code"
-          ? CANDIDATE_DUPLICATE_STATUS_CODE
-          : ADMISSION_DUPLICATE_STATUS_CODE;
-        const message = duplicateField === "candidate_code"
-          ? "Candidate code already exists"
-          : "Admission number already exists";
-        return reply.status(422).send({
-          status_code: statusCode,
-          message,
-          data: "",
-        });
+        const fallbackProfile = mergedStudentProfileForFallback ?? {
+          adm_number: (updatePayload["profile.adm_number"] as unknown) ?? (existingUser.profile as any)?.adm_number,
+          candidate_code:
+            (updatePayload["profile.candidate_code"] as unknown) ?? (existingUser.profile as any)?.candidate_code,
+        };
+
+        const duplicateResponse = await buildDuplicateStudentFieldResponse(fallbackProfile, userId);
+
+        // If no detailed duplicate found, fall back to index info from Mongo.
+        if (
+          duplicateResponse.status_code === ADMISSION_DUPLICATE_STATUS_CODE &&
+          duplicateResponse.message === "Admission number already exists"
+        ) {
+          const duplicateField = getDuplicateFieldFromMongoError(updateError);
+          if (duplicateField === "candidate_code") {
+            return reply.status(422).send({
+              status_code: CANDIDATE_DUPLICATE_STATUS_CODE,
+              message: "Candidate code already exists",
+              data: "",
+            });
+          }
+        }
+
+        return reply.status(422).send(duplicateResponse);
       }
       throw updateError;
     }
