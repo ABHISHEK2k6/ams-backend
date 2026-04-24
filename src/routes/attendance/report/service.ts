@@ -29,7 +29,7 @@ export const getReport = async (
       batch: new mongoose.Types.ObjectId(batch),
     })
       .sort({ start_time: 1 })
-      .populate("subject", "name code")
+      .populate("subject", "name subject_code")
       .populate("batch", "name")
       .populate("records.student", "name email first_name last_name profile.candidate_code roll_no");
 
@@ -42,7 +42,7 @@ export const getReport = async (
         message: "No sessions found for the specified subject and batch",
         data: {
           className: subjectDoc?.name || "Unknown Subject",
-          classCode: subjectDoc?.code || "N/A",
+          classCode: subjectDoc?.subject_code || "N/A",
           batchName: batchDoc?.name || "Unknown Batch",
           sessions: [],
           students: [],
@@ -50,9 +50,9 @@ export const getReport = async (
       });
     }
 
-    const className = sessions[0].subject?.name || "Unknown Subject";
-    const classCode = sessions[0].subject?.code || "N/A";
-    const batchName = sessions[0].batch?.name || "Unknown Batch";
+    const className = (sessions[0].subject as any)?.name || "Unknown Subject";
+    const classCode = (sessions[0].subject as any)?.subject_code || "N/A";
+    const batchName = (sessions[0].batch as any)?.name || "Unknown Batch";
 
     const sessionHeaders = sessions.map(s => ({
       _id: s._id,
