@@ -32,6 +32,7 @@ export default async function (fastify: FastifyInstance) {
       limit?: number; 
       session?: string;
       student?: string;
+      subject?: string;
       status?: string;
       from_date?: string;
       to_date?: string;

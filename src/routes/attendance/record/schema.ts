@@ -65,6 +65,7 @@ export const recordListSchema: RouteShorthandOptions["schema"] = {
       limit: { type: "number", minimum: 1, maximum: 100, default: 10 },
       session: { type: "string" },
       student: { type: "string" },
+      subject: { type: "string" },
       status: { 
         type: "string", 
         enum: ["present", "absent", "late", "excused"] 

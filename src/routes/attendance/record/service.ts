@@ -196,6 +196,7 @@ export const listRecords = async (
       limit?: number; 
       session?: string;
       student?: string;
+      subject?: string;
       status?: string;
       from_date?: string;
       to_date?: string;
@@ -206,7 +207,7 @@ export const listRecords = async (
   try {
     const userId = request.user.id;
     const userRole = request.user.role;
-    const { page = 1, limit = 10, session, student, status, from_date, to_date } = request.query;
+    const { page = 1, limit = 10, session, student, subject, status, from_date, to_date } = request.query;
 
     const pipeline: any[] = [];
 
@@ -219,6 +220,17 @@ export const listRecords = async (
           });
       }
       pipeline.push({ $match: { _id: new mongoose.Types.ObjectId(session) } });
+    }
+
+    if (subject) {
+      if (!mongoose.Types.ObjectId.isValid(subject)) {
+          return reply.status(400).send({
+              status_code: 400,
+              message: "Invalid subject ID format",
+              data: ""
+          });
+      }
+      pipeline.push({ $match: { subject: new mongoose.Types.ObjectId(subject) } });
     }
 
     pipeline.push({ $unwind: "$records" });
