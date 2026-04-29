@@ -13,7 +13,7 @@ import { notificationCreateSchema, notificationUpdateSchema } from "./schema";
 export default async function (fastify : FastifyInstance) {
     fastify.addHook("preHandler" , authMiddleware)
 
-    fastify.get("/", { preHandler: [isStaff] }, getNotification);
+    fastify.get("/", getNotification);
     fastify.post("/", {schema: notificationCreateSchema, preHandler: [isStaff]}, postNotification);
 
     //staff-only routes
