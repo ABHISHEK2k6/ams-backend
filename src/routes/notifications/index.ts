@@ -5,7 +5,7 @@ import {
   FastifyInstance,
   RouteShorthandOptions,
 } from "fastify";
-import { isAdmin, isStaff, isTeacher } from "@/middleware/roles";
+import { isAdmin, isAnyStaff, isTeacher } from "@/middleware/roles";
 import { deleteNotification, getNotification, postNotification, updateNotification } from "./service";
 import { notificationCreateSchema, notificationUpdateSchema } from "./schema";
 
@@ -14,9 +14,9 @@ export default async function (fastify : FastifyInstance) {
     fastify.addHook("preHandler" , authMiddleware)
 
     fastify.get("/", getNotification);
-    fastify.post("/", {schema: notificationCreateSchema, preHandler: [isStaff]}, postNotification);
+    fastify.post("/", {schema: notificationCreateSchema, preHandler: [isAnyStaff]}, postNotification);
 
     //staff-only routes
-    fastify.delete<{ Params: { id: string } }>("/:id", { preHandler: [isStaff] }, deleteNotification)
-    fastify.put<{ Params: { id: string } }>("/:id", { schema: notificationUpdateSchema, preHandler: [isStaff] }, updateNotification)
+    fastify.delete<{ Params: { id: string } }>("/:id", { preHandler: [isAnyStaff] }, deleteNotification)
+    fastify.put<{ Params: { id: string } }>("/:id", { schema: notificationUpdateSchema, preHandler: [isAnyStaff] }, updateNotification)
 }
