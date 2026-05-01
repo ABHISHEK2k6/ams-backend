@@ -240,7 +240,7 @@ export const deleteNotification = async (
 
     const isOwner = existing.createdBy && String(existing.createdBy) === String(request.user.id);
     const isPrivileged = ["admin", "principal", "hod"].includes(request.user.role);
-    if (!isOwner && !isPrivileged) {
+    if (!isOwner || !isPrivileged) {
       return reply.status(403).send({
         status_code: 403,
         message: "Forbidden - You can only delete your own notifications",
@@ -290,7 +290,7 @@ export const updateNotification = async (
 
   const isOwner = notificationInstance.createdBy && String(notificationInstance.createdBy) === String(request.user.id);
   const isPrivileged = ["admin", "principal", "hod"].includes(request.user.role);
-  if (!isOwner && !isPrivileged) {
+  if (!isOwner || !isPrivileged) {
     return reply.status(403).send({
       status_code: 403,
       message: "Forbidden - You can only update your own notifications",
