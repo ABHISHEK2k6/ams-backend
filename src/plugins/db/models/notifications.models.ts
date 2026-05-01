@@ -30,6 +30,11 @@ const notificationSchema = new Schema(
         Notificationtype : {
             type : String,
             enum : [ "announcement", "info", "results"]
+        },
+        createdBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            required: false
         }
     },
     { collection: "notification" },
