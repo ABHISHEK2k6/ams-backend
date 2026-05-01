@@ -21,7 +21,7 @@ export const notificationCreateSchema: RouteShorthandOptions["schema"] = {
             },
             message: {
                 type: "string",
-                maxLength: 3
+                minLength: 3
             },
             priorityLevel: {
                 type: "string",

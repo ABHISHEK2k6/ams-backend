@@ -72,7 +72,8 @@ export const postNotification = async (
       title: title,
       message: message,
       priorityLevel: priorityLevel,
-      Notificationtype: notificationType
+      Notificationtype: notificationType,
+      createdBy: userID
     })
     await notificationInstance.save()
     return reply.status(201).send({
@@ -90,7 +91,8 @@ export const postNotification = async (
         title: title,
         message: message,
         priorityLevel: priorityLevel,
-        Notificationtype: notificationType
+        Notificationtype: notificationType,
+        createdBy: userID
       })
       await notificationInstance.save()
       return reply.status(201).send({
@@ -175,9 +177,14 @@ export const getNotification = async (
 
     if (profile.designation) {
       const notificationsForTeacher = await Notification.find({
-        targetGroup: "college",
-        targetUsers: { $in: ["staff"] },
-        targetID: "all"
+        $or: [
+          {
+            targetGroup: "college",
+            targetUsers: { $in: ["staff"] },
+            targetID: "all"
+          },
+          { createdBy: userID }
+        ]
       });
 
       notifications = notificationsForTeacher;
@@ -222,6 +229,25 @@ export const deleteNotification = async (
 ) => {
   try {
     const notificationID = request.params.id;
+    const existing = await Notification.findById(notificationID).select("createdBy");
+    if (!existing) {
+      return reply.status(404).send({
+        status_code: 404,
+        message: "Notification not found",
+        data: ""
+      });
+    }
+
+    const isOwner = existing.createdBy && String(existing.createdBy) === String(request.user.id);
+    const isPrivileged = ["admin", "principal", "hod"].includes(request.user.role);
+    if (!isOwner || !isPrivileged) {
+      return reply.status(403).send({
+        status_code: 403,
+        message: "Forbidden - You can only delete your own notifications",
+        data: ""
+      });
+    }
+
     await Notification.findByIdAndDelete(notificationID)
     return reply.status(204).send({
       status_code: 204,
@@ -253,12 +279,22 @@ export const updateNotification = async (
     notificationType?: String;
   }
 
-  const notificationInstance = await Notification.findById(notificationID);
+  const notificationInstance = await Notification.findById(notificationID).select("createdBy");
   if (!notificationInstance) {
     return reply.status(404).send({ 
       status_code: 404, 
       message:"Notification not found", 
       data:"" 
+    });
+  }
+
+  const isOwner = notificationInstance.createdBy && String(notificationInstance.createdBy) === String(request.user.id);
+  const isPrivileged = ["admin", "principal", "hod"].includes(request.user.role);
+  if (!isOwner || !isPrivileged) {
+    return reply.status(403).send({
+      status_code: 403,
+      message: "Forbidden - You can only update your own notifications",
+      data: ""
     });
   }
 
