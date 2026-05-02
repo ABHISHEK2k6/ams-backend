@@ -19,19 +19,19 @@ const toIsoString = (value: unknown): string | undefined => {
  * The profile sub-object is passed through as-is.
  */
 const buildUserPayload = (user: any) => ({
-  _id:          String(user._id),
-  email:        user.email,
-  role:         user.role,
-  first_name:   user.first_name,
-  last_name:    user.last_name,
-  name:         user.name,
-  ...(user.phone        != null ? { phone: user.phone }               : {}),
-  ...(user.gender       != null ? { gender: user.gender }             : {}),
-  ...(user.image        != null ? { image: user.image }               : {}),
-  ...(user.emailVerified!= null ? { emailVerified: user.emailVerified }: {}),
+  _id: String(user._id),
+  email: user.email,
+  role: user.role,
+  first_name: user.first_name,
+  last_name: user.last_name,
+  name: user.name,
+  ...(user.phone != null ? { phone: user.phone } : {}),
+  ...(user.gender != null ? { gender: user.gender } : {}),
+  ...(user.image != null ? { image: user.image } : {}),
+  ...(user.emailVerified != null ? { emailVerified: user.emailVerified } : {}),
   ...(toIsoString(user.createdAt) ? { createdAt: toIsoString(user.createdAt) } : {}),
   ...(toIsoString(user.updatedAt) ? { updatedAt: toIsoString(user.updatedAt) } : {}),
-  profile:      user.profile ?? {},
+  profile: user.profile ?? {},
 });
 
 /** Roles that use the staff profile shape */
@@ -269,12 +269,12 @@ export const createUser = async (
   let duplicateExcludeUserId: string | undefined;
   try {
     const { image, phone, first_name, last_name, gender, profile } = request.body as {
-      image?:      string;
-      phone:       number;
-      first_name:  string;
-      last_name:   string;
-      gender:      string;
-      profile?:    Record<string, unknown>;
+      image?: string;
+      phone: number;
+      first_name: string;
+      last_name: string;
+      gender: string;
+      profile?: Record<string, unknown>;
     };
 
     const userId = request.user.id;
@@ -363,8 +363,8 @@ export const createUser = async (
         });
       }
       await User.findByIdAndUpdate(userId, {
-        "profile.child":    childUser._id,
-        "profile.childID":  undefined,
+        "profile.child": childUser._id,
+        "profile.childID": undefined,
       });
     }
 
@@ -405,14 +405,14 @@ export const updateUser = async (
     duplicateExcludeUserId = userId;
 
     const body = request.body as {
-      password?:   string;
-      image?:      string;
-      role?:       string;
-      phone?:      number;
+      password?: string;
+      image?: string;
+      role?: string;
+      phone?: number;
       first_name?: string;
-      last_name?:  string;
-      gender?:     string;
-      profile?:    Record<string, unknown>;
+      last_name?: string;
+      gender?: string;
+      profile?: Record<string, unknown>;
     };
 
     const existingUser = await User.findById(userId).select("first_name last_name role profile").lean();
@@ -424,16 +424,16 @@ export const updateUser = async (
     const updatePayload: Record<string, unknown> = { updatedAt: new Date() };
 
     if (body.first_name != null) updatePayload.first_name = body.first_name;
-    if (body.last_name  != null) updatePayload.last_name  = body.last_name;
-    if (body.image      != null) updatePayload.image      = body.image;
-    if (body.phone      != null) updatePayload.phone      = body.phone;
-    if (body.gender     != null) updatePayload.gender     = body.gender;
-    if (body.role       != null) updatePayload.role       = body.role;
+    if (body.last_name != null) updatePayload.last_name = body.last_name;
+    if (body.image != null) updatePayload.image = body.image;
+    if (body.phone != null) updatePayload.phone = body.phone;
+    if (body.gender != null) updatePayload.gender = body.gender;
+    if (body.role != null) updatePayload.role = body.role;
 
     // Derive name whenever first or last name is updated
     if (body.first_name != null || body.last_name != null) {
       const newFirst = body.first_name ?? existingUser.first_name;
-      const newLast  = body.last_name  ?? existingUser.last_name;
+      const newLast = body.last_name ?? existingUser.last_name;
       updatePayload.name = `${newFirst} ${newLast}`;
     }
 
@@ -441,7 +441,7 @@ export const updateUser = async (
     if (updatePayload.name || updatePayload.image) {
       await auth.api.updateUser({
         body: {
-          name:  updatePayload.name  as string | undefined,
+          name: updatePayload.name as string | undefined,
           image: updatePayload.image as string | undefined,
         },
         headers: request.headers,
@@ -468,7 +468,7 @@ export const updateUser = async (
             data: "",
           });
         }
-        updatePayload["profile.child"]   = childUser._id;
+        updatePayload["profile.child"] = childUser._id;
         delete updatePayload["profile.childID"];
       }
     }
@@ -602,13 +602,18 @@ export const listUser = async (
       filter["profile.batch"] = { $in: [new mongoose.Types.ObjectId(batch), batch] };
     }
 
-    // Text search — applies to user-level fields only
+    // Updated Text search logic
     if (search) {
+      const searchRegex = { $regex: search, $options: "i" };
+      
       filter.$or = [
-        { name:       { $regex: search, $options: "i" } },
-        { email:      { $regex: search, $options: "i" } },
-        { first_name: { $regex: search, $options: "i" } },
-        { last_name:  { $regex: search, $options: "i" } },
+        { name:                  searchRegex },
+        { email:                 searchRegex },
+        { first_name:            searchRegex },
+        { last_name:             searchRegex },
+        // These lines enable searching by code/admission number
+        { "profile.candidate_code": searchRegex },
+        { "profile.adm_number":     searchRegex },
       ];
     }
 
@@ -659,18 +664,18 @@ export const bulkCreateUsers = async (
   try {
     let users = (request.body as {
       users: Array<{
-        email?:          string;
-        generate_mail?:  boolean;
-        password?:       string;
-        first_name:      string;
-        last_name:       string;
-        role:            string;
-        adm_number?:     string;
-        adm_year?:       number;
+        email?: string;
+        generate_mail?: boolean;
+        password?: string;
+        first_name: string;
+        last_name: string;
+        role: string;
+        adm_number?: string;
+        adm_year?: number;
         candidate_code?: string;
-        department?:     string;
-        date_of_birth?:  Date;
-        batch?:          string;
+        department?: string;
+        date_of_birth?: Date;
+        batch?: string;
       }>;
     }).users;
 
@@ -693,7 +698,7 @@ export const bulkCreateUsers = async (
 
     const results = {
       success: [] as Array<{ email: string; role: string; userId: string }>,
-      failed:  [] as Array<{ email: string; error: string }>,
+      failed: [] as Array<{ email: string; error: string }>,
     };
 
     // ── Google Workspace batch ────────────────────────────────────────────────
@@ -715,11 +720,11 @@ export const bulkCreateUsers = async (
     if (workspaceCandidates.length > 0) {
       try {
         const inputs: WorkspaceUserInput[] = workspaceCandidates.map((u) => ({
-          first_name:     u.first_name,
-          last_name:      u.last_name,
+          first_name: u.first_name,
+          last_name: u.last_name,
           candidate_code: u.candidate_code!,
-          adm_year:       u.adm_year!,
-          department:     u.department!,
+          adm_year: u.adm_year!,
+          department: u.department!,
         }));
         workspaceResultMap = await bulkCreateWorkspaceUsers(inputs);
       } catch (wsError) {
@@ -870,7 +875,7 @@ export const bulkCreateUsers = async (
 
     // Preload batches for student lookups
     const batchByObjectId = new Map<string, string>();
-    const batchByCode     = new Map<string, string>();
+    const batchByCode = new Map<string, string>();
     const preloadedBatches = await Batch.find({}).select("_id id").lean();
     for (const batch of preloadedBatches as Array<{ _id: any; id?: string }>) {
       batchByObjectId.set(batch._id.toString(), batch._id.toString());
@@ -883,9 +888,9 @@ export const bulkCreateUsers = async (
         const password = userData.password || Math.random().toString(36).slice(-12) + "A1!";
 
         const createdUser = await authClient.signUp.email({
-          email:    userEmail,
+          email: userEmail,
           password: password,
-          name:     userName,
+          name: userName,
         });
 
         if (!createdUser?.data?.user) {
@@ -898,11 +903,11 @@ export const bulkCreateUsers = async (
         // Build profile for students (other roles can extend later)
         const profile: Record<string, unknown> = {};
         if (userData.role === "student") {
-          if (userData.adm_number)     profile.adm_number     = userData.adm_number;
-          if (userData.adm_year)       profile.adm_year       = userData.adm_year;
+          if (userData.adm_number) profile.adm_number = userData.adm_number;
+          if (userData.adm_year) profile.adm_year = userData.adm_year;
           if (userData.candidate_code) profile.candidate_code = userData.candidate_code;
-          if (userData.department)     profile.department     = userData.department;
-          if (userData.date_of_birth)  profile.date_of_birth  = userData.date_of_birth;
+          if (userData.department) profile.department = userData.department;
+          if (userData.date_of_birth) profile.date_of_birth = userData.date_of_birth;
 
           if (userData.batch) {
             const batchId = new mongoose.Types.ObjectId(mongoose.Types.ObjectId.isValid(userData.batch)
@@ -922,10 +927,10 @@ export const bulkCreateUsers = async (
         // Single atomic update: role + split names + profile
         try {
           await User.findByIdAndUpdate(userId, {
-            role:       userData.role,
+            role: userData.role,
             first_name: userData.first_name,
-            last_name:  userData.last_name,
-            updatedAt:  new Date(),
+            last_name: userData.last_name,
+            updatedAt: new Date(),
             profile,
           });
         } catch (updateErr) {
