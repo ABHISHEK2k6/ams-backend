@@ -9,6 +9,7 @@ export const listBatchesSchema: RouteShorthandOptions["schema"] = {
       department: { type: "string", enum: ["CSE", "ECE", "IT"] },
       adm_year: { type: "number" },
       scheme: { type: "string" },
+      sem: { type: "string" },
     },
   },
 };
@@ -35,6 +36,7 @@ export const createBatchSchema: RouteShorthandOptions["schema"] = {
       department: { type: "string", enum: ["CSE", "ECE", "IT"] },
       staff_advisor: { type: "string" }, // Teacher ObjectId
       scheme: { type: "string", minLength: 1 },
+      sem: { type: "string", minLength: 1 },
     },
   },
 };
@@ -57,6 +59,7 @@ export const updateBatchSchema: RouteShorthandOptions["schema"] = {
       department: { type: "string", enum: ["CSE", "ECE", "IT"] },
       staff_advisor: { type: "string" }, // Teacher ObjectId
       scheme: { type: "string", minLength: 1 },
+      sem: { type: "string", minLength: 1 },
     },
   },
 };

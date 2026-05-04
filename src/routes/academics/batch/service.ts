@@ -8,6 +8,7 @@ interface ListBatchesQuery {
   limit?: number;
   department?: "CSE" | "ECE" | "IT";
   adm_year?: number;
+  sem?: string;
 }
 
 interface GetBatchParams {
@@ -22,6 +23,7 @@ interface CreateBatchBody {
   department: "CSE" | "ECE" | "IT";
   staff_advisor: string;
   scheme: string;
+  sem?: string;
 }
 
 interface UpdateBatchParams {
@@ -36,6 +38,7 @@ interface UpdateBatchBody {
   department?: "CSE" | "ECE" | "IT";
   staff_advisor?: string;
   scheme?: string;
+  sem?: string;
 }
 
 interface DeleteBatchParams {
@@ -69,13 +72,14 @@ export const listBatchesHandler = async (
   reply: FastifyReply
 ) => {
   try {
-    const { page = 1, limit = 10, department, adm_year } = request.query as ListBatchesQuery;
+    const { page = 1, limit = 10, department, adm_year, sem } = request.query as ListBatchesQuery;
     const skip = (page - 1) * limit;
 
     // Build filter
     const filter: any = {};
     if (department) filter.department = department;
     if (adm_year) filter.adm_year = adm_year;
+    if (sem) filter.sem = sem;
 
     const batches = await Batch.find(filter)
       .populate("staff_advisor", "first_name last_name name email role")
@@ -148,7 +152,7 @@ export const createBatchHandler = async (
   reply: FastifyReply
 ) => {
   try {
-    const { name, adm_year, department, staff_advisor, scheme, id, batch_id } =
+    const { name, adm_year, department, staff_advisor, scheme, id, batch_id, sem } =
       request.body as CreateBatchBody;
     const requestedId = normalizeBatchId(id || batch_id);
     const batchId = requestedId || generateBatchId(adm_year, department);
@@ -197,6 +201,7 @@ export const createBatchHandler = async (
       department,
       staff_advisor,
       scheme,
+      sem: sem || "1",
     });
 
     const populatedBatch = await Batch.findById(batch._id).populate(
