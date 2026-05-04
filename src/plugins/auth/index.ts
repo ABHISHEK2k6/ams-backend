@@ -4,9 +4,11 @@ import { client } from "../db/index.js";
 
 import { createAuthClient } from "better-auth/client";
 import { adminClient } from "better-auth/client/plugins";
+import { admin } from "better-auth/plugins";
 
-export const auth = betterAuth<BetterAuthOptions>({
+export const auth = betterAuth({
   database: mongodbAdapter(client),
+  plugins: [admin()],
   trustedOrigins: [process.env.CORS_ORIGIN, process.env.CORS_ORIGIN_DEV].filter(
     (origin): origin is string => !!origin
   ),

@@ -559,7 +559,11 @@ export const deleteUser = async (
     const userID = request.params.id;
 
     // Remove from Better-Auth first
-    await authClient.admin.removeUser({ userId: userID });
+    try {
+      await auth.api.removeUser({ body: { userId: userID }, headers: request.headers as any });
+    } catch (err) {
+      console.warn("Better-Auth removeUser failed:", err);
+    }
 
     // Single delete — profile is embedded, no cascade needed
     await User.findByIdAndDelete(userID);
@@ -887,18 +891,20 @@ export const bulkCreateUsers = async (
       try {
         const password = userData.password || Math.random().toString(36).slice(-12) + "A1!";
 
-        const createdUser = await authClient.signUp.email({
-          email: userEmail,
-          password: password,
-          name: userName,
+        const createdUser = await auth.api.createUser({
+          body: {
+            email: userEmail,
+            password: password,
+            name: userName,
+          }
         });
 
-        if (!createdUser?.data?.user) {
+        if (!createdUser?.user) {
           results.failed.push({ email: userEmail, error: "Failed to create user account" });
           continue;
         }
 
-        const userId = createdUser.data.user.id;
+        const userId = createdUser.user.id;
 
         // Build profile for students (other roles can extend later)
         const profile: Record<string, unknown> = {};
@@ -915,7 +921,7 @@ export const bulkCreateUsers = async (
               : batchByCode.get(userData.batch.toUpperCase()));
 
             if (!batchId) {
-              await authClient.admin.removeUser({ userId });
+              try { await auth.api.removeUser({ body: { userId }, headers: request.headers as any }); } catch {}
               await User.findByIdAndDelete(userId);
               results.failed.push({ email: userEmail, error: "Batch not found for provided batch ID" });
               continue;
@@ -934,7 +940,7 @@ export const bulkCreateUsers = async (
             profile,
           });
         } catch (updateErr) {
-          await authClient.admin.removeUser({ userId });
+          try { await auth.api.removeUser({ body: { userId }, headers: request.headers as any }); } catch {}
           await User.findByIdAndDelete(userId);
           const profileErrorMessage = isDuplicateKeyError(updateErr)
             ? "Admission number or candidate code already exists"
