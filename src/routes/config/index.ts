@@ -14,26 +14,23 @@ export default async function (fastify: FastifyInstance) {
     // Public endpoint: no auth required
     fastify.get("/", listPublicConfig);
 
-    // All other routes require auth
-    fastify.addHook("preHandler", authMiddleware);
-
     fastify.get<{ Querystring: { page?: number; limit?: number } }>(
         "/list",
-        { schema: configListSchema, preHandler: [isAdmin] },
+        { schema: configListSchema, preHandler: [authMiddleware, isAdmin] },
         listConfig
     );
 
-    fastify.post("/", { schema: configCreateSchema, preHandler: [isAdmin] }, createConfig);
+    fastify.post("/", { schema: configCreateSchema, preHandler: [authMiddleware, isAdmin] }, createConfig);
 
     fastify.put<{ Params: { key: string } }>(
         "/:key",
-        { schema: configUpdateSchema, preHandler: [isAdmin] },
+        { schema: configUpdateSchema, preHandler: [authMiddleware, isAdmin] },
         updateConfig
     );
 
     fastify.delete<{ Params: { key: string } }>(
         "/:key",
-        { preHandler: [isAdmin] },
+        { preHandler: [authMiddleware, isAdmin] },
         deleteConfig
     );
 }
