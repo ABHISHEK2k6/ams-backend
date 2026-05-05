@@ -439,13 +439,34 @@ export const updateUser = async (
 
     // Sync name/image to Better-Auth if changed
     if (updatePayload.name || updatePayload.image) {
-      await auth.api.updateUser({
-        body: {
-          name: updatePayload.name as string | undefined,
-          image: updatePayload.image as string | undefined,
-        },
-        headers: request.headers,
-      });
+      const betterAuthPayload: Record<string, string> = {};
+      if (updatePayload.name) betterAuthPayload.name = updatePayload.name as string;
+      if (updatePayload.image) betterAuthPayload.image = updatePayload.image as string;
+
+      if (Object.keys(betterAuthPayload).length > 0) {
+        if (request.params.id) {
+          try {
+            await auth.api.adminUpdateUser({
+              body: {
+                userId: request.params.id,
+                data: betterAuthPayload,
+              },
+              headers: request.headers as any,
+            });
+          } catch (e) {
+            console.warn("Better-Auth adminUpdateUser failed:", e);
+          }
+        } else {
+          try {
+            await auth.api.updateUser({
+              body: betterAuthPayload,
+              headers: request.headers,
+            });
+          } catch (e) {
+            console.warn("Better-Auth updateUser failed:", e);
+          }
+        }
+      }
     }
 
     // Profile: merge-update fields using dot-notation to avoid overwriting other profile fields
