@@ -6,6 +6,8 @@ interface ListSubjectsQuery {
   limit?: number;
   sem?: string;
   type?: "Theory" | "Practical";
+  scheme?: string;
+  department?: string;
 }
 
 interface GetSubjectParams {
@@ -47,13 +49,15 @@ export const listSubjectsHandler = async (
   reply: FastifyReply
 ) => {
   try {
-    const { page = 1, limit = 10, sem, type } = request.query as ListSubjectsQuery;
+    const { page = 1, limit = 10, sem, type, scheme, department } = request.query as ListSubjectsQuery;
     const skip = (page - 1) * limit;
 
     // Build filter
     const filter: any = {};
     if (sem) filter.sem = sem;
     if (type) filter.type = type;
+    if (scheme) filter.scheme = scheme;
+    if (department) filter.department = department;
 
     const subjects = await Subject.find(filter)
       .skip(skip)
