@@ -35,6 +35,22 @@ export const createSession = async (
       session_type: string;
     };
 
+    let exsistingSession = await AttendanceSession.findOne({
+      batch,
+      subject,
+      start_time,
+      session_type
+    })
+    
+    if( exsistingSession) {
+      return reply.status(409).send({
+        status_code: 409,
+        message: "Attendance session already exists for this batch, subject, and session type",
+        data: "",
+      });
+    }
+    
+    
     const newSession = new AttendanceSession({
       batch,
       subject,
