@@ -85,15 +85,26 @@ export const listBatchesHandler = async (
       .populate("staff_advisor", "first_name last_name name email role")
       .skip(skip)
       .limit(limit)
-      .sort({ adm_year: -1, name: 1 });
+      .sort({ adm_year: -1, name: 1 })
+      .lean();
 
     const total = await Batch.countDocuments(filter);
+
+    const studentCounts = await User.aggregate([
+      { $match: { role: "student", "profile.batch": { $in: batches.map((b) => b._id) } } },
+      { $group: { _id: "$profile.batch", count: { $sum: 1 } } },
+    ]);
+    const countByBatchId = new Map(studentCounts.map((c) => [String(c._id), c.count]));
+    const batchesWithStrength = batches.map((b) => ({
+      ...b,
+      studentCount: countByBatchId.get(String(b._id)) ?? 0,
+    }));
 
     return reply.send({
       status_code: 200,
       message: "Batches retrieved successfully",
       data: {
-        batches,
+        batches: batchesWithStrength,
         pagination: {
           page,
           limit,
