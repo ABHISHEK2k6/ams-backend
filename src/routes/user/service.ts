@@ -1,10 +1,11 @@
 import { FastifyRequest, FastifyReply } from "fastify";
 import mongoose from "mongoose";
-import { User } from "@/plugins/db/models/auth.model";
+import { User, Account } from "@/plugins/db/models/auth.model";
 import { Batch } from "@/plugins/db/models/academics.model";
 import { auth } from "@/plugins/auth";
 import { authClient } from "@/plugins/auth";
 import { bulkCreateWorkspaceUsers, type WorkspaceUserInput } from "@/lib/google-workspace";
+import { hashPassword } from "better-auth/crypto";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -31,6 +32,9 @@ const buildUserPayload = (user: any) => ({
   ...(user.emailVerified != null ? { emailVerified: user.emailVerified } : {}),
   ...(toIsoString(user.createdAt) ? { createdAt: toIsoString(user.createdAt) } : {}),
   ...(toIsoString(user.updatedAt) ? { updatedAt: toIsoString(user.updatedAt) } : {}),
+  banned: Boolean(user.banned),
+  ...(user.banReason != null ? { banReason: user.banReason } : {}),
+  ...(toIsoString(user.banExpires) ? { banExpires: toIsoString(user.banExpires) } : {}),
   profile: user.profile ?? {},
 });
 
@@ -994,6 +998,106 @@ export const bulkCreateUsers = async (
     return reply.status(500).send({
       status_code: 500,
       message: "Bulk user creation failed",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+};
+
+// ─── Set Password ──────────────────────────────────────────────────────────────
+
+/**
+ * Lets the current (logged-in) user set a password directly, without
+ * needing a current one — only succeeds if they don't already have a
+ * "credential" account (e.g. users who only ever signed in via Google).
+ * Once a password exists, use Better-Auth's core /change-password instead
+ * (called directly from the frontend via authClient.changePassword).
+ */
+export const setPassword = async (request: FastifyRequest, reply: FastifyReply) => {
+  try {
+    const { newPassword } = request.body as { newPassword: string };
+
+    await auth.api.setPassword({
+      body: { newPassword },
+      headers: request.headers as any,
+    });
+
+    return reply.send({
+      status_code: 200,
+      message: "Password set successfully",
+      data: "",
+    });
+  } catch (error: any) {
+    const message =
+      error?.body?.message ||
+      (error instanceof Error ? error.message : "Failed to set password");
+    const alreadySet = /already.*set/i.test(String(message));
+
+    return reply.status(alreadySet ? 409 : 400).send({
+      status_code: alreadySet ? 409 : 400,
+      message: alreadySet
+        ? "You already have a password set. Use the change password form instead."
+        : message,
+      data: "",
+    });
+  }
+};
+
+// ─── Admin Reset Password ──────────────────────────────────────────────────────
+
+/**
+ * Admin directly sets another user's password. Unlike Better-Auth's own
+ * admin.setUserPassword (which only UPDATEs an existing "credential"
+ * account and silently no-ops if the target user never had one — e.g.
+ * Google-only sign-in), this creates the credential account if missing,
+ * so it works correctly for every user regardless of how they signed up.
+ */
+export const resetUserPassword = async (
+  request: FastifyRequest<{ Params: { id: string } }>,
+  reply: FastifyReply
+) => {
+  try {
+    const { id } = request.params;
+    const { newPassword } = request.body as { newPassword: string };
+
+    const targetUser = await User.findById(id);
+    if (!targetUser) {
+      return reply.status(404).send({
+        status_code: 404,
+        message: "User not found",
+        data: "",
+      });
+    }
+
+    const hashed = await hashPassword(newPassword);
+    const now = new Date();
+
+    const existingAccount = await Account.findOne({ userId: id, providerId: "credential" });
+
+    if (existingAccount) {
+      existingAccount.password = hashed;
+      existingAccount.updatedAt = now;
+      await existingAccount.save();
+    } else {
+      await Account.create({
+        _id: new mongoose.Types.ObjectId().toString(),
+        accountId: id,
+        providerId: "credential",
+        userId: id,
+        password: hashed,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    return reply.send({
+      status_code: 200,
+      message: "Password reset successfully",
+      data: "",
+    });
+  } catch (error) {
+    return reply.status(500).send({
+      status_code: 500,
+      message: "Failed to reset password",
       error: error instanceof Error ? error.message : "Unknown error",
     });
   }

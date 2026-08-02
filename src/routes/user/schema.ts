@@ -136,4 +136,37 @@ export const bulkCreateSchema: RouteShorthandOptions["schema"] = {
   },
 };
 
+// ─── Set Password ──────────────────────────────────────────────────────────────
+
+export const setPasswordSchema: RouteShorthandOptions["schema"] = {
+  body: {
+    type: "object",
+    required: ["newPassword"],
+    properties: {
+      newPassword: { type: "string", minLength: 8 },
+    },
+    additionalProperties: false,
+  },
+};
+
+// ─── Admin Reset Password ──────────────────────────────────────────────────────
+
+export const resetPasswordSchema: RouteShorthandOptions["schema"] = {
+  params: {
+    type: "object",
+    required: ["id"],
+    properties: {
+      id: { type: "string" },
+    },
+  },
+  body: {
+    type: "object",
+    required: ["newPassword"],
+    properties: {
+      newPassword: { type: "string", minLength: 8 },
+    },
+    additionalProperties: false,
+  },
+};
+
 export { studentProfileSchema, staffProfileSchema, parentProfileSchema };

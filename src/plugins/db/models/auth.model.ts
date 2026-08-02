@@ -55,6 +55,9 @@ const userSchema = new Schema(
     },
     phone: { type: Number, required: true },
     password_hash: { type: String, required: false },
+    banned: { type: Boolean, required: false },
+    banReason: { type: String, required: false },
+    banExpires: { type: Date, required: false },
 
     // Role-specific data — shape varies by role, typed via UserProfile interfaces above
     profile: { type: Schema.Types.Mixed, default: {} },
