@@ -23,7 +23,8 @@ interface CreateGradeFieldBody {
   total_mark: number;
   weightage: number;
   value?: string;
-  assignment_id?: string;
+  description?: string;
+  due_date?: string;
 }
 
 interface UpdateGradeFieldParams {
@@ -38,7 +39,8 @@ interface UpdateGradeFieldBody {
   total_mark?: number;
   weightage?: number;
   value?: string;
-  assignment_id?: string;
+  description?: string;
+  due_date?: string;
 }
 
 interface DeleteGradeFieldParams {
@@ -62,7 +64,6 @@ export const listGradeFieldsHandler = async (
     const gradeFields = await GradeField.find(filter)
       .populate("batch", "name adm_year department")
       .populate("subject", "_id sem subject_code type")
-      .populate("assignment_id", "title")
       .skip(skip)
       .limit(limit)
       .sort({ createdAt: -1 });
@@ -100,8 +101,7 @@ export const getGradeFieldByIdHandler = async (
 
     const gradeField = await GradeField.findById(id)
       .populate("batch", "name adm_year department")
-      .populate("subject", "_id sem subject_code type")
-      .populate("assignment_id", "title");
+      .populate("subject", "_id sem subject_code type");
 
     if (!gradeField) {
       return reply.status(404).send({
@@ -161,15 +161,6 @@ export const createGradeFieldHandler = async (
       });
     }
 
-    // Validate assignment type has assignment_id
-    if (gradeFieldData.type === "assignment" && !gradeFieldData.assignment_id) {
-      return reply.status(422).send({
-        status_code: 422,
-        message: "Assignment ID is required for assignment type",
-        data: "",
-      });
-    }
-
     // Validate weightage total doesn't exceed 100 for same batch/subject
     const existingFields = await GradeField.find({
       batch: gradeFieldData.batch,
@@ -189,8 +180,7 @@ export const createGradeFieldHandler = async (
 
     const populatedGradeField = await GradeField.findById(gradeField._id)
       .populate("batch", "name adm_year department")
-      .populate("subject", "_id sem subject_code type")
-      .populate("assignment_id", "title");
+      .populate("subject", "_id sem subject_code type");
 
     return reply.status(201).send({
       status_code: 201,
@@ -259,16 +249,6 @@ export const updateGradeFieldHandler = async (
       });
     }
 
-    // Validate assignment type has assignment_id
-    const newAssignmentId = updateData.assignment_id ?? gradeField.assignment_id;
-    if (newType === "assignment" && !newAssignmentId) {
-      return reply.status(422).send({
-        status_code: 422,
-        message: "Assignment ID is required for assignment type",
-        data: "",
-      });
-    }
-
     // Validate weightage total if weightage, batch, or subject is being updated
     if (updateData.weightage || updateData.batch || updateData.subject) {
       const targetBatch = updateData.batch ?? gradeField.batch;
@@ -296,8 +276,7 @@ export const updateGradeFieldHandler = async (
       runValidators: true,
     })
       .populate("batch", "name adm_year department")
-      .populate("subject", "_id sem subject_code type")
-      .populate("assignment_id", "title");
+      .populate("subject", "_id sem subject_code type");
 
     return reply.send({
       status_code: 200,

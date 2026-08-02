@@ -36,7 +36,8 @@ export const createGradeFieldSchema: RouteShorthandOptions["schema"] = {
       total_mark: { type: "number", minimum: 0 },
       weightage: { type: "number", minimum: 0, maximum: 100 },
       value: { type: "string" }, // Required for moderation type
-      assignment_id: { type: "string" }, // Required for assignment type
+      description: { type: "string" }, // Only used for assignment type
+      due_date: { type: "string", format: "date-time" }, // Only used for assignment type
     },
   },
 };
@@ -59,7 +60,8 @@ export const updateGradeFieldSchema: RouteShorthandOptions["schema"] = {
       total_mark: { type: "number", minimum: 0 },
       weightage: { type: "number", minimum: 0, maximum: 100 },
       value: { type: "string" },
-      assignment_id: { type: "string" },
+      description: { type: "string" },
+      due_date: { type: "string", format: "date-time" },
     },
   },
 };

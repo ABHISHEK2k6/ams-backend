@@ -1,6 +1,4 @@
 import mongoose from "mongoose";
-import { string } from "zod";
-import { required } from "zod/mini";
 
 
 const { Schema, model } = mongoose;
@@ -18,8 +16,8 @@ const gradeFieldSchema = new Schema(
             ref: "Subject",
             required:true,
         },
-        type : { 
-			type: String, 
+        type : {
+			type: String,
 			required:true,
 			enum: ["exam", "assignment", "practical" , "attendance", "moderation"]
 		},
@@ -30,10 +28,16 @@ const gradeFieldSchema = new Schema(
             type : String,
             required : false,
         },
-        assignment_id : {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: "Assignment",
-            required:false,
+        // Only meaningful for type="assignment" — the assignment's brief/instructions.
+        description : {
+            type : String,
+            required : false,
+        },
+        // Only meaningful for type="assignment" — when marks are due; purely informational,
+        // does not gate mark entry (teachers can still enter marks after this date).
+        due_date : {
+            type : Date,
+            required : false,
         },
     },
     { collection: "grade_field" },
@@ -48,12 +52,9 @@ gradeFieldSchema.pre('save', function(next) {
         return next(new Error("Value is required for moderation type"));
     }
 
-     if (this.type != "assignment") {
-       this.assignment_id = undefined;
-    }
-
-    if(this.type === "assignment" && !this.assignment_id) {
-        return next(new Error("Assignment ID is required for assignment type"));
+    if (this.type != "assignment") {
+        this.description = undefined;
+        this.due_date = undefined;
     }
 
     next();
