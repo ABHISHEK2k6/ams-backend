@@ -1,5 +1,6 @@
 import { FastifyRequest, FastifyReply } from "fastify";
 import { AttendanceSession } from "@/plugins/db/models/attendance.model";
+import { User } from "@/plugins/db/models/auth.model";
 import mongoose from "mongoose";
 
 interface StatsQuery {
@@ -13,7 +14,9 @@ export const getStats = async (
   try {
     const userId = request.user.id;
     const userRole = request.user.role;
-    const { student } = request.query;
+    // Accept either `student` (preferred) or `for_user` (legacy/frontend) as the query param.
+    const q: any = request.query as any;
+    const student = q.student ?? q.for_user;
 
     let targetStudentId = userId;
 
@@ -25,7 +28,30 @@ export const getStats = async (
           data: "",
         });
       }
-      
+
+      // If the requester is a parent, allow only their associated child
+      if (userRole === "parent") {
+        let parentChild = (request.user as any)?.profile?.child;
+        if (!parentChild) {
+          const parentDoc = await User.findById(userId).select("profile.child").lean();
+          parentChild = parentDoc?.profile?.child;
+        }
+        if (!parentChild) {
+          return reply.status(403).send({
+            status_code: 403,
+            message: "Parent profile does not have an associated child",
+            data: "",
+          });
+        }
+        if (student !== parentChild.toString()) {
+          return reply.status(403).send({
+            status_code: 403,
+            message: "Parents can only view stats for their associated child",
+            data: "",
+          });
+        }
+      }
+
       if (!mongoose.Types.ObjectId.isValid(student)) {
         return reply.status(400).send({
           status_code: 400,
@@ -34,6 +60,23 @@ export const getStats = async (
         });
       }
       targetStudentId = student;
+    } else {
+      // No student param provided: if requester is a parent, use their child ID
+      if (userRole === "parent") {
+        let parentChild = (request.user as any)?.profile?.child;
+        if (!parentChild) {
+          const parentDoc = await User.findById(userId).select("profile.child").lean();
+          parentChild = parentDoc?.profile?.child;
+        }
+        if (!parentChild) {
+          return reply.status(403).send({
+            status_code: 403,
+            message: "Parent profile does not have an associated child",
+            data: "",
+          });
+        }
+        targetStudentId = parentChild.toString();
+      }
     }
 
     const studentObjectId = new mongoose.Types.ObjectId(targetStudentId);

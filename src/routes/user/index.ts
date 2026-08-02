@@ -5,7 +5,7 @@ import {
   FastifyInstance,
   RouteShorthandOptions,
 } from "fastify";
-import { isAdmin, isAnyStaff } from "@/middleware/roles";
+import { isAdmin, isAnyStaff, isParent } from "@/middleware/roles";
 
 import { userCreateSchema, userUpdateSchema, userListSchema, bulkCreateSchema } from "./schema";
 import { createUser, deleteUser, getUser, listUser, updateUser, bulkCreateUsers } from "./service";
@@ -21,7 +21,7 @@ export default async function (fastify: FastifyInstance) {
   
   // Admin-only routes
   fastify.post("/bulk", { schema: bulkCreateSchema, preHandler: [isAdmin] }, bulkCreateUsers);
-  fastify.get<{ Params: { id: string } }>("/:id", { preHandler: [isAnyStaff] }, getUser);
+  fastify.get<{ Params: { id: string } }>("/:id", getUser);
   fastify.delete<{ Params: { id: string } }>("/:id", { preHandler: [isAdmin] }, deleteUser);
   fastify.put<{ Params: { id: string } }>("/:id", { schema: userUpdateSchema, preHandler: [isAdmin] }, updateUser);
   fastify.get<{ Querystring: { page?: number; limit?: number; role: string; search?: string; } }>("/list", { schema: userListSchema, preHandler: [isAnyStaff] }, listUser);

@@ -34,31 +34,38 @@ export const postNotification = async (
   }
 
   if (targetGroup === "year") {
-    if (request.user.role == "principal" || request.user.role == "hod") { }
-    else {
+    // Allow principal/hod. Also allow teachers when they are targeting parents specifically.
+    const targetingParents = Array.isArray(targetUsers) && targetUsers.includes("parent");
+    if (request.user.role === "principal" || request.user.role === "hod" || (request.user.role === "teacher" && targetingParents)) {
+      // allowed
+    } else {
       return reply.status(403).send({
         "status_code": 403,
-        "message": "Request Failed! User Role Not Satistfied (Should be principal or hod)",
+        "message": "Request Failed! User Role Not Satisfied (Should be principal or hod, or teacher when targeting parents)",
         "data": ""
       })
     }
   }
   else if (targetGroup === "batch") {
-    if (request.user.role == "principle" || request.user.role == "hod" || request.user.role == "teacher") { }
+    // Allow principal/hod/teacher. Teachers can target both students and parents.
+    if (request.user.role === "principal" || request.user.role === "hod" || request.user.role === "teacher") { }
     else {
       return reply.status(403).send({
         "status_code": 403,
-        "message": "Request Failed! User Role Not Satistfied (Should be principal or hod or teacher)",
+        "message": "Request Failed! User Role Not Satisfied (Should be principal or hod or teacher)",
         "data": ""
       })
     }
   }
   else if (targetGroup === "department") {
-    if (request.user.role == "principle" || request.user.role == "hod") { }
-    else {
+    // Allow principal/hod. Also allow teachers when targeting parents specifically.
+    const targetingParentsDept = Array.isArray(targetUsers) && targetUsers.includes("parent");
+    if (request.user.role === "principal" || request.user.role === "hod" || (request.user.role === "teacher" && targetingParentsDept)) {
+      // allowed
+    } else {
       return reply.status(403).send({
         "status_code": 403,
-        "message": "Request Failed! User Role Not Satistfied (Should be principal or hod)",
+        "message": "Request Failed! User Role Not Satisfied (Should be principal or hod, or teacher when targeting parents)",
         "data": ""
       })
     }
@@ -200,12 +207,51 @@ export const getNotification = async (
     const profile = (user.profile ?? {}) as any;
 
     if (profile.child) {
-      const NotificationsForParents = await Notification.find({
+      // Ensure we have child's profile details to match batch/year/department
+      const child = await User.findById(profile.child).lean();
+      const childProfile = (child?.profile ?? {}) as any;
+
+      const notificationsForParents: any[] = [];
+
+      // College-wide parent notifications
+      const collegeNotifs = await Notification.find({
         targetGroup: "college",
         targetUsers: { $in: ["parent"] },
         targetID: "all"
       });
-      notifications = NotificationsForParents;
+      notificationsForParents.push(...collegeNotifs);
+
+      // Year-level (compare as string) and include notifications sent to "all"
+      if (childProfile.adm_year) {
+        const yearNotifs = await Notification.find({
+          targetGroup: "year",
+          targetUsers: { $in: ["parent"] },
+          targetID: { $in: [String(childProfile.adm_year), "all"] }
+        });
+        notificationsForParents.push(...yearNotifs);
+      }
+
+      // Department-level: include notifications targeted to the specific department or to "all"
+      if (childProfile.department) {
+        const deptNotifs = await Notification.find({
+          targetGroup: "department",
+          targetUsers: { $in: ["parent"] },
+          targetID: { $in: [childProfile.department, "all"] }
+        });
+        notificationsForParents.push(...deptNotifs);
+      }
+
+      // Batch-level: include notifications targeted to the specific batch or to "all"
+      if (childProfile.batch) {
+        const batchNotifs = await Notification.find({
+          targetGroup: "batch",
+          targetUsers: { $in: ["parent"] },
+          targetID: { $in: [String(childProfile.batch), "all"] }
+        });
+        notificationsForParents.push(...batchNotifs);
+      }
+
+      notifications = notificationsForParents;
 
       return reply.status(200).send({
         "status_code": 200,
