@@ -73,3 +73,40 @@ export const deleteBatchSchema: RouteShorthandOptions["schema"] = {
     },
   },
 };
+
+// ─── Advance Semester (bulk) ────────────────────────────────────────────────────
+
+export const advanceSemSchema: RouteShorthandOptions["schema"] = {
+  body: {
+    type: "object",
+    required: ["batchIds"],
+    properties: {
+      batchIds: {
+        type: "array",
+        items: { type: "string" },
+        minItems: 1,
+      },
+      // If provided, sets all selected batches to this exact semester.
+      // If omitted, each batch's semester is incremented by 1 (capped at 8).
+      sem: { type: "number", minimum: 1, maximum: 8 },
+    },
+    additionalProperties: false,
+  },
+};
+
+// ─── Convert to Alumni (bulk) ───────────────────────────────────────────────────
+
+export const convertToAlumniSchema: RouteShorthandOptions["schema"] = {
+  body: {
+    type: "object",
+    required: ["batchIds"],
+    properties: {
+      batchIds: {
+        type: "array",
+        items: { type: "string" },
+        minItems: 1,
+      },
+    },
+    additionalProperties: false,
+  },
+};

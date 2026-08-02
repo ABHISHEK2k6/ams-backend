@@ -88,6 +88,28 @@ export const listSubjectsHandler = async (
   }
 };
 
+export const listSchemesHandler = async (
+  request: FastifyRequest,
+  reply: FastifyReply
+) => {
+  try {
+    const schemes = await Subject.distinct("scheme");
+    schemes.sort();
+
+    return reply.send({
+      status_code: 200,
+      message: "Schemes retrieved successfully",
+      data: { schemes },
+    });
+  } catch (error) {
+    return reply.status(500).send({
+      status_code: 500,
+      message: "Failed to retrieve schemes",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+};
+
 export const getSubjectByIdHandler = async (
   request: FastifyRequest,
   reply: FastifyReply

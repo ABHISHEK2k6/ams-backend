@@ -1,12 +1,13 @@
 import { FastifyInstance } from "fastify";
 import authMiddleware from "@/middleware/auth";
 import { isAdmin } from "@/middleware/roles";
-import { 
-  listSubjectsHandler, 
-  getSubjectByIdHandler, 
-  createSubjectHandler, 
-  updateSubjectHandler, 
-  deleteSubjectHandler 
+import {
+  listSubjectsHandler,
+  listSchemesHandler,
+  getSubjectByIdHandler,
+  createSubjectHandler,
+  updateSubjectHandler,
+  deleteSubjectHandler,
 } from "./service";
 import { 
   listSubjectsSchema, 
@@ -22,6 +23,9 @@ export default async function (fastify: FastifyInstance) {
 
   // List all subjects - accessible by any staff and students
   fastify.get("/", { schema: listSubjectsSchema }, listSubjectsHandler);
+
+  // Distinct scheme values - accessible by any staff and students
+  fastify.get("/schemes", listSchemesHandler);
 
   // Get single subject - accessible by any staff and students
   fastify.get("/:id", { schema: getSubjectByIdSchema }, getSubjectByIdHandler);

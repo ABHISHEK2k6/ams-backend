@@ -1,19 +1,23 @@
 import { FastifyInstance } from "fastify";
 import authMiddleware from "@/middleware/auth";
 import { isAdmin, isAnyStaff, isParent } from "@/middleware/roles";
-import { 
-  listBatchesHandler, 
-  getBatchByIdHandler, 
-  createBatchHandler, 
-  updateBatchHandler, 
-  deleteBatchHandler 
+import {
+  listBatchesHandler,
+  getBatchByIdHandler,
+  createBatchHandler,
+  updateBatchHandler,
+  deleteBatchHandler,
+  advanceSemHandler,
+  convertToAlumniHandler,
 } from "./service";
-import { 
-  listBatchesSchema, 
-  getBatchByIdSchema, 
-  createBatchSchema, 
-  updateBatchSchema, 
-  deleteBatchSchema 
+import {
+  listBatchesSchema,
+  getBatchByIdSchema,
+  createBatchSchema,
+  updateBatchSchema,
+  deleteBatchSchema,
+  advanceSemSchema,
+  convertToAlumniSchema,
 } from "./schema";
 
 export default async function (fastify: FastifyInstance) {
@@ -34,4 +38,10 @@ export default async function (fastify: FastifyInstance) {
 
   // Delete batch - admin only
   fastify.delete("/:id", { schema: deleteBatchSchema, preHandler: [isAdmin] }, deleteBatchHandler);
+
+  // Bulk-advance (or set) semester for selected batches - admin only
+  fastify.post("/advance-sem", { schema: advanceSemSchema, preHandler: [isAdmin] }, advanceSemHandler);
+
+  // Convert semester-8 batches to alumni (one-way) - admin only
+  fastify.post("/convert-alumni", { schema: convertToAlumniSchema, preHandler: [isAdmin] }, convertToAlumniHandler);
 }

@@ -350,6 +350,159 @@ export const updateBatchHandler = async (
   }
 };
 
+interface AdvanceSemBody {
+  batchIds: string[];
+  sem?: number;
+}
+
+const MAX_SEM = 8;
+const MIN_SEM = 1;
+export const ALUMNI_SEM = "100";
+
+export const advanceSemHandler = async (
+  request: FastifyRequest,
+  reply: FastifyReply
+) => {
+  try {
+    const { batchIds, sem } = request.body as AdvanceSemBody;
+
+    const invalidIds = batchIds.filter((id) => !mongoose.isValidObjectId(id));
+    if (invalidIds.length > 0) {
+      return reply.status(422).send({
+        status_code: 422,
+        message: `Invalid batch ID(s): ${invalidIds.join(", ")}`,
+        data: "",
+      });
+    }
+
+    const batches = await Batch.find({ _id: { $in: batchIds } }).select("_id sem name");
+    if (batches.length !== batchIds.length) {
+      const foundIds = new Set(batches.map((b) => String(b._id)));
+      const missing = batchIds.filter((id) => !foundIds.has(id));
+      return reply.status(404).send({
+        status_code: 404,
+        message: `Batch(es) not found: ${missing.join(", ")}`,
+        data: "",
+      });
+    }
+
+    const alumniBatches = batches.filter((b) => b.sem === ALUMNI_SEM);
+    if (alumniBatches.length > 0) {
+      return reply.status(422).send({
+        status_code: 422,
+        message: `Alumni batches cannot be advanced or edited via this action: ${alumniBatches
+          .map((b) => b.name)
+          .join(", ")}`,
+        data: "",
+      });
+    }
+
+    const updated: { _id: string; name: string; previousSem: string; sem: string }[] = [];
+
+    if (sem != null) {
+      // Explicit set — only valid when the caller already confirmed all
+      // selected batches share the same current sem (enforced client-side).
+      const newSem = String(sem);
+      for (const batch of batches) {
+        updated.push({ _id: String(batch._id), name: batch.name, previousSem: batch.sem, sem: newSem });
+      }
+      await Batch.updateMany({ _id: { $in: batchIds } }, { $set: { sem: newSem } });
+    } else {
+      // Advance each batch by 1, capped at MAX_SEM.
+      for (const batch of batches) {
+        const current = Number.parseInt(batch.sem, 10);
+        const next = Number.isFinite(current)
+          ? Math.min(Math.max(current, MIN_SEM) + 1, MAX_SEM)
+          : MIN_SEM;
+        const nextSem = String(next);
+        updated.push({ _id: String(batch._id), name: batch.name, previousSem: batch.sem, sem: nextSem });
+        await Batch.updateOne({ _id: batch._id }, { $set: { sem: nextSem } });
+      }
+    }
+
+    return reply.send({
+      status_code: 200,
+      message: `Semester updated for ${updated.length} batch(es)`,
+      data: { updated },
+    });
+  } catch (error) {
+    return reply.status(500).send({
+      status_code: 500,
+      message: "Failed to advance semester",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+};
+
+interface ConvertToAlumniBody {
+  batchIds: string[];
+}
+
+export const convertToAlumniHandler = async (
+  request: FastifyRequest,
+  reply: FastifyReply
+) => {
+  try {
+    const { batchIds } = request.body as ConvertToAlumniBody;
+
+    const invalidIds = batchIds.filter((id) => !mongoose.isValidObjectId(id));
+    if (invalidIds.length > 0) {
+      return reply.status(422).send({
+        status_code: 422,
+        message: `Invalid batch ID(s): ${invalidIds.join(", ")}`,
+        data: "",
+      });
+    }
+
+    const batches = await Batch.find({ _id: { $in: batchIds } }).select("_id sem name");
+    if (batches.length !== batchIds.length) {
+      const foundIds = new Set(batches.map((b) => String(b._id)));
+      const missing = batchIds.filter((id) => !foundIds.has(id));
+      return reply.status(404).send({
+        status_code: 404,
+        message: `Batch(es) not found: ${missing.join(", ")}`,
+        data: "",
+      });
+    }
+
+    const ineligible = batches.filter((b) => b.sem !== String(MAX_SEM));
+    if (ineligible.length > 0) {
+      return reply.status(422).send({
+        status_code: 422,
+        message: `Only batches at semester ${MAX_SEM} can be converted to alumni. Not eligible: ${ineligible
+          .map((b) => `${b.name} (sem ${b.sem})`)
+          .join(", ")}`,
+        data: "",
+      });
+    }
+
+    const updated = batches.map((b) => ({
+      _id: String(b._id),
+      name: b.name,
+      previousSem: b.sem,
+      sem: ALUMNI_SEM,
+    }));
+
+    await Batch.updateMany({ _id: { $in: batchIds } }, { $set: { sem: ALUMNI_SEM } });
+
+    // TODO (future phase): email students, downgrade Workspace accounts,
+    // archive + purge attendance sessions for these batches. See
+    // docs/future-scope.md.
+
+    return reply.send({
+      status_code: 200,
+      message: `${updated.length} batch(es) converted to alumni`,
+      data: { updated },
+    });
+  } catch (error) {
+    return reply.status(500).send({
+      status_code: 500,
+      message: "Failed to convert batches to alumni",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+};
+
 export const deleteBatchHandler = async (
   request: FastifyRequest,
   reply: FastifyReply

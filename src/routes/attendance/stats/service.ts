@@ -1,6 +1,7 @@
 import { FastifyRequest, FastifyReply } from "fastify";
 import { AttendanceSession } from "@/plugins/db/models/attendance.model";
 import { User } from "@/plugins/db/models/auth.model";
+import { Batch } from "@/plugins/db/models/academics.model";
 import mongoose from "mongoose";
 
 interface StatsQuery {
@@ -81,6 +82,12 @@ export const getStats = async (
 
     const studentObjectId = new mongoose.Types.ObjectId(targetStudentId);
 
+    const studentDoc = await User.findById(targetStudentId).select("profile.batch").lean();
+    const batchId = (studentDoc as any)?.profile?.batch;
+    const currentBatch = batchId
+      ? await Batch.findById(batchId).select("sem department scheme").lean()
+      : null;
+
     const pipeline: any[] = [
       { $match: { "records.student": studentObjectId } },
       { $unwind: "$records" },
@@ -103,10 +110,22 @@ export const getStats = async (
         }
       },
       { $unwind: "$subjectData" },
+      ...(currentBatch
+        ? [
+            {
+              $match: {
+                "subjectData.sem": currentBatch.sem,
+                "subjectData.department": currentBatch.department,
+                "subjectData.scheme": currentBatch.scheme,
+              },
+            },
+          ]
+        : []),
       {
         $project: {
           _id: 0,
           subjectName: "$subjectData.name",
+          sem: "$subjectData.sem",
           totalClasses: 1,
           attendedClasses: 1,
           percentage: {

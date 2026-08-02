@@ -192,7 +192,7 @@ export const getCalendarDayHandler = async (
         return {
           sessionId: s._id,
           subject: s.subject?.name ?? "",
-          batch: s.batch?.name ?? "",
+          teacher: s.created_by ? `${s.created_by.first_name} ${s.created_by.last_name}` : "",
           start_time: s.start_time,
           end_time: s.end_time,
           status: record?.status ?? "absent",
