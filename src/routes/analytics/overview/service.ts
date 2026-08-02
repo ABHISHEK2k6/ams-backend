@@ -4,6 +4,7 @@ import { Batch } from "@/plugins/db/models/academics.model";
 import { AttendanceSession } from "@/plugins/db/models/attendance.model";
 import { Notification } from "@/plugins/db/models/notifications.models";
 import { getScopeBatchFilter } from "@/lib/scope";
+import { ALUMNI_SEM } from "@/routes/academics/batch/service";
 
 interface OverviewQuery {
   atRiskThreshold?: number;
@@ -23,7 +24,7 @@ export const getOverviewHandler = async (
     }
 
     const batchFilter = getScopeBatchFilter(user);
-    const batches = await Batch.find(batchFilter).select("_id name department");
+    const batches = await Batch.find({ ...batchFilter, sem: { $ne: ALUMNI_SEM } }).select("_id name department");
     const batchIds = batches.map((b) => b._id);
     const batchMap = new Map(batches.map((b) => [String(b._id), b]));
 
