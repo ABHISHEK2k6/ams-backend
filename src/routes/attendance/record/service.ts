@@ -1,5 +1,6 @@
 import { FastifyRequest, FastifyReply } from "fastify";
 import { AttendanceSession } from "@/plugins/db/models/attendance.model";
+import { User } from "@/plugins/db/models/auth.model";
 import mongoose from "mongoose";
 
 export const createRecord = async (
@@ -162,6 +163,23 @@ export const getRecord = async (
       });
     }
 
+    // Parents can view only their child's attendance record. Parent's child is stored
+    // on the user profile as `profile.child` (a User._id referencing the student).
+    if (userRole === "parent") {
+      let parentChild = (request.user as any)?.profile?.child;
+      if (!parentChild) {
+        const parentDoc = await User.findById(userId).select("profile.child").lean();
+        parentChild = parentDoc?.profile?.child;
+      }
+      if (!parentChild || record.student._id.toString() !== parentChild.toString()) {
+        return reply.status(403).send({
+          status_code: 403,
+          message: "You are not authorized to view this attendance record",
+          data: "",
+        });
+      }
+    }
+
     const responseRecord = {
       _id: record._id,
       student: record.student,
@@ -250,6 +268,23 @@ export const listRecords = async (
     // Students can list only their own attendance records.
     if (userRole === "student") {
       recordMatch["records.student"] = new mongoose.Types.ObjectId(userId);
+    }
+
+    // Parents can list only their child's attendance records. Resolve `profile.child`.
+    if (userRole === "parent") {
+      let parentChild = (request.user as any)?.profile?.child;
+      if (!parentChild) {
+        const parentDoc = await User.findById(userId).select("profile.child").lean();
+        parentChild = parentDoc?.profile?.child;
+      }
+      if (!parentChild) {
+        return reply.status(403).send({
+          status_code: 403,
+          message: "Parent profile does not have an associated child",
+          data: "",
+        });
+      }
+      recordMatch["records.student"] = new mongoose.Types.ObjectId(parentChild);
     }
     
     if (status) {

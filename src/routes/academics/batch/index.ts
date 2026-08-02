@@ -1,6 +1,6 @@
 import { FastifyInstance } from "fastify";
 import authMiddleware from "@/middleware/auth";
-import { isAdmin, isAnyStaff } from "@/middleware/roles";
+import { isAdmin, isAnyStaff, isParent } from "@/middleware/roles";
 import { 
   listBatchesHandler, 
   getBatchByIdHandler, 
@@ -24,7 +24,7 @@ export default async function (fastify: FastifyInstance) {
   fastify.get("/", { schema: listBatchesSchema, preHandler: [isAnyStaff] }, listBatchesHandler);
 
   // Get single batch - accessible by any staff
-  fastify.get("/:id", { schema: getBatchByIdSchema, preHandler: [isAnyStaff] }, getBatchByIdHandler);
+  fastify.get("/:id", { schema: getBatchByIdSchema, preHandler: [isAnyStaff,isParent] }, getBatchByIdHandler);
 
   // Create batch - admin only
   fastify.post("/", { schema: createBatchSchema, preHandler: [isAdmin] }, createBatchHandler);
