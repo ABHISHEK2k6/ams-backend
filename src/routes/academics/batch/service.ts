@@ -9,6 +9,7 @@ interface ListBatchesQuery {
   department?: "CSE" | "ECE" | "IT";
   adm_year?: number;
   sem?: string;
+  staff_advisor?: string;
 }
 
 interface GetBatchParams {
@@ -72,7 +73,7 @@ export const listBatchesHandler = async (
   reply: FastifyReply
 ) => {
   try {
-    const { page = 1, limit = 10, department, adm_year, sem } = request.query as ListBatchesQuery;
+    const { page = 1, limit = 10, department, adm_year, sem, staff_advisor } = request.query as ListBatchesQuery;
     const skip = (page - 1) * limit;
 
     // Build filter
@@ -80,6 +81,7 @@ export const listBatchesHandler = async (
     if (department) filter.department = department;
     if (adm_year) filter.adm_year = adm_year;
     if (sem) filter.sem = sem;
+    if (staff_advisor) filter.staff_advisor = staff_advisor;
 
     const batches = await Batch.find(filter)
       .populate("staff_advisor", "first_name last_name name email role")

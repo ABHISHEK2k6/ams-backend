@@ -1,29 +1,41 @@
 import { FastifyInstance } from "fastify";
 import authMiddleware from "@/middleware/auth";
 import { isAdmin, isAnyStaff } from "@/middleware/roles";
-import { 
-  listGradeEntriesHandler, 
-  getGradeEntryByIdHandler, 
-  createGradeEntryHandler, 
+import {
+  listGradeEntriesHandler,
+  getGradeEntryByIdHandler,
+  createGradeEntryHandler,
   bulkCreateGradeEntriesHandler,
-  updateGradeEntryHandler, 
-  deleteGradeEntryHandler 
+  getGradeEntryMatrixHandler,
+  getGradeEntrySummaryHandler,
+  bulkUpsertGradeEntriesHandler,
+  updateGradeEntryHandler,
+  deleteGradeEntryHandler
 } from "./service";
-import { 
-  listGradeEntriesSchema, 
-  getGradeEntryByIdSchema, 
+import {
+  listGradeEntriesSchema,
+  getGradeEntryByIdSchema,
   createGradeEntrySchema,
   bulkCreateGradeEntriesSchema,
-  updateGradeEntrySchema, 
-  deleteGradeEntrySchema 
+  gradeEntryMatrixSchema,
+  gradeEntrySummarySchema,
+  bulkUpsertGradeEntriesSchema,
+  updateGradeEntrySchema,
+  deleteGradeEntrySchema
 } from "./schema";
 
 export default async function (fastify: FastifyInstance) {
   // Apply authentication to all routes
   fastify.addHook("preHandler", authMiddleware);
 
-  // List all grade entries - accessible by any staff
-  fastify.get("/", { schema: listGradeEntriesSchema, preHandler: [isAnyStaff] }, listGradeEntriesHandler);
+  // List grade entries - any authenticated role;
+  fastify.get("/", { schema: listGradeEntriesSchema }, listGradeEntriesHandler);
+
+  // Pivoted student x grade-field matrix for one batch+subject
+  fastify.get("/matrix", { schema: gradeEntryMatrixSchema, preHandler: [isAnyStaff] }, getGradeEntryMatrixHandler);
+
+  // Per-student, per-subject capped internal totals for a whole batch for class performance / semester report
+  fastify.get("/summary", { schema: gradeEntrySummarySchema, preHandler: [isAnyStaff] }, getGradeEntrySummaryHandler);
 
   // Get single grade entry - accessible by any staff
   fastify.get("/:id", { schema: getGradeEntryByIdSchema, preHandler: [isAnyStaff] }, getGradeEntryByIdHandler);
@@ -33,6 +45,9 @@ export default async function (fastify: FastifyInstance) {
 
   // Bulk create grade entries - any staff can create
   fastify.post("/bulk", { schema: bulkCreateGradeEntriesSchema, preHandler: [isAnyStaff] }, bulkCreateGradeEntriesHandler);
+
+  // Bulk create-or-update in one DB round trip — powers the teacher grid's single "Save" button
+  fastify.post("/bulk-upsert", { schema: bulkUpsertGradeEntriesSchema, preHandler: [isAnyStaff] }, bulkUpsertGradeEntriesHandler);
 
   // Update grade entry - any staff can update
   fastify.put("/:id", { schema: updateGradeEntrySchema, preHandler: [isAnyStaff] }, updateGradeEntryHandler);

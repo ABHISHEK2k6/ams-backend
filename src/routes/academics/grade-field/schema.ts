@@ -5,7 +5,7 @@ export const listGradeFieldsSchema: RouteShorthandOptions["schema"] = {
     type: "object",
     properties: {
       page: { type: "number", minimum: 1, default: 1 },
-      limit: { type: "number", minimum: 1, maximum: 100, default: 10 },
+      limit: { type: "number", minimum: 1, maximum: 500, default: 10 },
       batch: { type: "string" },
       subject: { type: "string" },
       type: { type: "string", enum: ["exam", "assignment", "practical", "attendance", "moderation"] },
@@ -26,7 +26,7 @@ export const getGradeFieldByIdSchema: RouteShorthandOptions["schema"] = {
 export const createGradeFieldSchema: RouteShorthandOptions["schema"] = {
   body: {
     type: "object",
-    required: ["batch", "subject", "type", "name", "total_mark", "weightage"],
+    required: ["batch", "subject", "type", "name"],
     properties: {
       _id: { type: "string" },
       batch: { type: "string" }, // Batch ObjectId
@@ -35,6 +35,8 @@ export const createGradeFieldSchema: RouteShorthandOptions["schema"] = {
       name: { type: "string", minLength: 1 },
       total_mark: { type: "number", minimum: 0 },
       weightage: { type: "number", minimum: 0, maximum: 100 },
+      // Whether students/parents can see this field yet. Defaults to false (draft).
+      published: { type: "boolean" },
       value: { type: "string" }, // Required for moderation type
       description: { type: "string" }, // Only used for assignment type
       due_date: { type: "string", format: "date-time" }, // Only used for assignment type
@@ -59,6 +61,7 @@ export const updateGradeFieldSchema: RouteShorthandOptions["schema"] = {
       name: { type: "string", minLength: 1 },
       total_mark: { type: "number", minimum: 0 },
       weightage: { type: "number", minimum: 0, maximum: 100 },
+      published: { type: "boolean" },
       value: { type: "string" },
       description: { type: "string" },
       due_date: { type: "string", format: "date-time" },
@@ -67,6 +70,16 @@ export const updateGradeFieldSchema: RouteShorthandOptions["schema"] = {
 };
 
 export const deleteGradeFieldSchema: RouteShorthandOptions["schema"] = {
+  params: {
+    type: "object",
+    required: ["id"],
+    properties: {
+      id: { type: "string" },
+    },
+  },
+};
+
+export const syncAttendanceGradeFieldSchema: RouteShorthandOptions["schema"] = {
   params: {
     type: "object",
     required: ["id"],

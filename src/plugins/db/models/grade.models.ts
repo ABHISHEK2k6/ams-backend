@@ -5,7 +5,7 @@ const { Schema, model } = mongoose;
 
 const gradeFieldSchema = new Schema(
     {
-        _id : { type: String },
+        _id : { type: String, default: () => new mongoose.Types.ObjectId().toString() },
         batch : {
             type: mongoose.Schema.Types.ObjectId,
             ref: "Batch",
@@ -22,8 +22,16 @@ const gradeFieldSchema = new Schema(
 			enum: ["exam", "assignment", "practical" , "attendance", "moderation"]
 		},
         name: { type: String, required: true },
-        total_mark : { type: Number, required: true },
+        total_mark : {
+            type: Number,
+            required: function (this: { type: string }) {
+                return this.type !== "moderation";
+            },
+        },
         weightage : { type: Number, required: true },
+        // Whether students/parents can see this column and its marks yet —
+        // teachers keep working on it privately until they toggle this on.
+        published : { type: Boolean, required: true, default: false },
         value : {
             type : String,
             required : false,
@@ -57,13 +65,18 @@ gradeFieldSchema.pre('save', function(next) {
         this.due_date = undefined;
     }
 
+    if (this.type === "moderation") {
+        this.total_mark = undefined;
+        this.weightage = 0;
+    }
+
     next();
 });
 
 
 const gradeEntrySchema = new Schema(
     {
-        _id : { type: String },
+        _id : { type: String, default: () => new mongoose.Types.ObjectId().toString() },
         user : {
             type: mongoose.Schema.Types.ObjectId, 
             ref: "User", 

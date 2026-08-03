@@ -10,6 +10,7 @@ export const listBatchesSchema: RouteShorthandOptions["schema"] = {
       adm_year: { type: "number" },
       scheme: { type: "string" },
       sem: { type: "string" },
+      staff_advisor: { type: "string" },
     },
   },
 };
