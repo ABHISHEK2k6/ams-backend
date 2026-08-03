@@ -60,8 +60,6 @@ async function syncAttendanceEntries(gradeField: { _id: unknown; batch: unknown;
     updateOne: {
       filter: { user, grade_field: gradeField._id },
       update: {
-        // remarks records the classes attended out of total this mark was
-        // calculated from (e.g. "7/10"), shown alongside the mark in the UI.
         $set: { mark, is_absent: false, remarks: `${attended}/${total}`, updated_at: now },
         $setOnInsert: { _id: new mongoose.Types.ObjectId().toString(), user, grade_field: gradeField._id },
       },
@@ -115,8 +113,6 @@ interface CreateGradeFieldBody {
   total_mark?: number;
   /** Optional — if omitted, weightage is split equally across all fields for this batch+subject. */
   weightage?: number;
-  /** Whether students/parents can see this field yet. Defaults to false (draft). */
-  published?: boolean;
   value?: string;
   description?: string;
   due_date?: string;
@@ -133,7 +129,6 @@ interface UpdateGradeFieldBody {
   name?: string;
   total_mark?: number;
   weightage?: number;
-  published?: boolean;
   value?: string;
   description?: string;
   due_date?: string;
@@ -175,9 +170,6 @@ export const listGradeFieldsHandler = async (
     if (batch) filter.batch = batch;
     if (subject) filter.subject = subject;
     if (type) filter.type = type;
-    // Student/parent only ever see fields the teacher has published — staff
-    // (who can see selfScopedBatch === undefined) always see everything, drafts included.
-    if (selfScopedBatch !== undefined) filter.published = true;
 
     const gradeFields = await GradeField.find(filter)
       .populate("batch", "name adm_year department")
