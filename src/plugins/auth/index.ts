@@ -5,10 +5,21 @@ import { client } from "../db/index.js";
 import { createAuthClient } from "better-auth/client";
 import { adminClient } from "better-auth/client/plugins";
 import { admin } from "better-auth/plugins";
+import { createAuthMiddleware } from "better-auth/api";
 
 export const auth = betterAuth({
   database: mongodbAdapter(client),
   plugins: [admin()],
+  // TEMP DIAGNOSTIC — remove once account_not_linked root cause is confirmed.
+  hooks: {
+    before: createAuthMiddleware(async (ctx) => {
+      if (!ctx.path.startsWith("/callback/google")) return;
+      console.log("[google-callback-diagnostic]", {
+        trustedProviders: ctx.context.trustedProviders,
+        accountLinkingConfig: ctx.context.options.account?.accountLinking,
+      });
+    }),
+  },
   trustedOrigins: [process.env.CORS_ORIGIN, process.env.CORS_ORIGIN_DEV].filter(
     (origin): origin is string => !!origin
   ),
