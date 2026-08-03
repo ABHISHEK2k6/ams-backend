@@ -4,7 +4,12 @@ import { User, Account } from "@/plugins/db/models/auth.model";
 import { Batch } from "@/plugins/db/models/academics.model";
 import { auth } from "@/plugins/auth";
 import { authClient } from "@/plugins/auth";
-import { bulkCreateWorkspaceUsers, type WorkspaceUserInput } from "@/lib/google-workspace";
+import {
+  bulkCreateWorkspaceUsers,
+  buildPrimaryEmail,
+  generatePassword,
+  type WorkspaceUserInput,
+} from "@/lib/google-workspace";
 import { hashPassword } from "better-auth/crypto";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -63,6 +68,13 @@ class StudentUniqueFieldError extends Error {
     }
   }
 }
+
+/** Title-cases a name: capitalizes the first letter of each word, and after hyphens/apostrophes. */
+const toTitleCase = (value: string): string =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/(^|[\s'-])([a-z])/g, (_match, sep, char) => sep + char.toUpperCase());
 
 const normalizeStudentCode = (value: unknown): string | undefined => {
   if (typeof value !== "string") return undefined;
@@ -205,8 +217,8 @@ export const getUser = async (
     const userId = request.params.id || request.user.id;
 
     const user = await User.findById(userId)
-      .populate({ path: "profile.batch", select: "name id adm_year department" })
-      .populate({ path: "profile.child", select: "first_name last_name email role profile" })
+      .populate({ path: "profile.batch", model: "Batch", select: "name id adm_year department" })
+      .populate({ path: "profile.child", model: "User", select: "first_name last_name email role profile" })
       .lean();
 
     if (!user) {
@@ -284,8 +296,11 @@ export const createUser = async (
     const userId = request.user.id;
     duplicateExcludeUserId = userId;
 
+    const first_name_cased = toTitleCase(first_name);
+    const last_name_cased = toTitleCase(last_name);
+
     // Derive name from first_name + last_name
-    const name = `${first_name} ${last_name}`;
+    const name = `${first_name_cased} ${last_name_cased}`;
 
     const existingUser = await User.findById(userId).select("role").lean();
     if (!existingUser) {
@@ -326,8 +341,8 @@ export const createUser = async (
         userId,
         {
           name,
-          first_name,
-          last_name,
+          first_name: first_name_cased,
+          last_name: last_name_cased,
           phone,
           image,
           gender,
@@ -427,8 +442,8 @@ export const updateUser = async (
     // Build the update payload
     const updatePayload: Record<string, unknown> = { updatedAt: new Date() };
 
-    if (body.first_name != null) updatePayload.first_name = body.first_name;
-    if (body.last_name != null) updatePayload.last_name = body.last_name;
+    if (body.first_name != null) updatePayload.first_name = toTitleCase(body.first_name);
+    if (body.last_name != null) updatePayload.last_name = toTitleCase(body.last_name);
     if (body.image != null) updatePayload.image = body.image;
     if (body.phone != null) updatePayload.phone = body.phone;
     if (body.gender != null) updatePayload.gender = body.gender;
@@ -436,8 +451,8 @@ export const updateUser = async (
 
     // Derive name whenever first or last name is updated
     if (body.first_name != null || body.last_name != null) {
-      const newFirst = body.first_name ?? existingUser.first_name;
-      const newLast = body.last_name ?? existingUser.last_name;
+      const newFirst = (updatePayload.first_name as string | undefined) ?? existingUser.first_name;
+      const newLast = (updatePayload.last_name as string | undefined) ?? existingUser.last_name;
       updatePayload.name = `${newFirst} ${newLast}`;
     }
 
@@ -716,6 +731,12 @@ export const bulkCreateUsers = async (
       });
     }
 
+    users = users.map((u) => ({
+      ...u,
+      first_name: toTitleCase(u.first_name),
+      last_name: toTitleCase(u.last_name),
+    }));
+
     const roles = new Set(users.map((u) => u.role));
     if (roles.size > 1) {
       return reply.status(400).send({
@@ -726,14 +747,17 @@ export const bulkCreateUsers = async (
     }
 
     const results = {
-      success: [] as Array<{ email: string; role: string; userId: string }>,
-      failed: [] as Array<{ email: string; error: string }>,
+      success: [] as Array<{ email: string; role: string; userId: string; name: string; candidate_code: string }>,
+      failed: [] as Array<{ email: string; error: string; name: string; candidate_code: string }>,
+      credentials: [] as Array<{
+        name: string;
+        candidate_code: string;
+        adm_year: number | undefined;
+        department: string | undefined;
+        email: string;
+        password: string;
+      }>,
     };
-
-    // ── Google Workspace batch ────────────────────────────────────────────────
-    const workspaceCandidates = users.filter(
-      (u) => u.generate_mail === true && u.candidate_code && u.adm_year && u.department
-    );
 
     const missingWorkspaceFields = users.filter(
       (u) => u.generate_mail === true && (!u.candidate_code || !u.adm_year || !u.department)
@@ -742,35 +766,16 @@ export const bulkCreateUsers = async (
       results.failed.push({
         email: `${u.first_name} ${u.last_name}`,
         error: "generate_mail requires candidate_code, adm_year, and department",
+        name: `${u.first_name} ${u.last_name}`,
+        candidate_code: u.candidate_code ?? "",
       });
     }
-
-    let workspaceResultMap = new Map<string, { primaryEmail: string; error?: string }>();
-    if (workspaceCandidates.length > 0) {
-      try {
-        const inputs: WorkspaceUserInput[] = workspaceCandidates.map((u) => ({
-          first_name: u.first_name,
-          last_name: u.last_name,
-          candidate_code: u.candidate_code!,
-          adm_year: u.adm_year!,
-          department: u.department!,
-        }));
-        workspaceResultMap = await bulkCreateWorkspaceUsers(inputs);
-      } catch (wsError) {
-        for (const u of workspaceCandidates) {
-          results.failed.push({
-            email: `${u.first_name} ${u.last_name}`,
-            error: "Google Workspace batch failed: " + (wsError instanceof Error ? wsError.message : "Unknown error"),
-          });
-        }
-        const failedCodes = new Set(workspaceCandidates.map((u) => u.candidate_code));
-        users = users.filter((u) => !failedCodes.has(u.candidate_code));
-      }
-    }
-    // ─────────────────────────────────────────────────────────────────────────
-
-    // Resolve emails
-    type ProcessEntry = { userData: (typeof users)[number]; userName: string; userEmail: string };
+    type ProcessEntry = {
+      userData: (typeof users)[number];
+      userName: string;
+      userEmail: string;
+      password: string;
+    };
     const usersToProcess: ProcessEntry[] = [];
 
     for (const userData of users) {
@@ -779,45 +784,70 @@ export const bulkCreateUsers = async (
       }
 
       const userName = `${userData.first_name} ${userData.last_name}`;
+      const password = userData.password || generatePassword();
       let userEmail: string;
 
       if (userData.generate_mail === true) {
-        const wsResult = workspaceResultMap.get(userData.candidate_code!);
-        if (!wsResult || wsResult.error) {
-          results.failed.push({ email: userName, error: "Workspace account creation failed: " + (wsResult?.error ?? "No result") });
-          continue;
-        }
-        userEmail = wsResult.primaryEmail;
+        const trimmedEmail = userData.email?.trim();
+        userEmail = trimmedEmail || buildPrimaryEmail(userData.first_name, userData.last_name, userData.candidate_code!);
       } else {
         if (!userData.email) {
-          results.failed.push({ email: userName, error: "email is required when generate_mail is false" });
+          results.failed.push({
+            email: userName,
+            error: "email is required when generate_mail is false",
+            name: userName,
+            candidate_code: userData.candidate_code ?? "",
+          });
           continue;
         }
         userEmail = userData.email;
       }
 
-      usersToProcess.push({ userData, userName, userEmail });
+      usersToProcess.push({ userData, userName, userEmail, password });
     }
 
-    // Pre-check existing emails in one query
-    const candidateEmails = [...new Set(usersToProcess.map((u) => u.userEmail))];
+    // Duplicate emails within this same upload (e.g. two rows generating the same address)
+    const seenEmails = new Set<string>();
+    const dedupedUsersToProcess = usersToProcess.filter(({ userData, userEmail, userName }) => {
+      if (seenEmails.has(userEmail)) {
+        results.failed.push({
+          email: userEmail || userName,
+          error: "Duplicate email within this upload",
+          name: userName,
+          candidate_code: userData.candidate_code ?? "",
+        });
+        return false;
+      }
+      seenEmails.add(userEmail);
+      return true;
+    });
+
+    // Pre-check existing emails in ONE query — covers both manually supplied
+    // and generated addresses, so we never call Workspace for an address
+    // that's already taken.
+    const candidateEmails = [...new Set(dedupedUsersToProcess.map((u) => u.userEmail))];
     const existingEmailSet = candidateEmails.length > 0
       ? new Set((await User.find({ email: { $in: candidateEmails } }).select("email").lean()).map((u: any) => u.email))
       : new Set<string>();
 
-    const finalUsers = usersToProcess.filter(({ userEmail }) => {
+    const afterExistenceCheck = dedupedUsersToProcess.filter(({ userData, userEmail, userName }) => {
       if (existingEmailSet.has(userEmail)) {
-        results.failed.push({ email: userEmail, error: "User with this email already exists" });
+        results.failed.push({
+          email: userEmail,
+          error: "User with this email already exists",
+          name: userName,
+          candidate_code: userData.candidate_code ?? "",
+        });
         return false;
       }
       return true;
     });
 
-    // Pre-check student admission/candidate uniqueness against DB and request payload
+    // Pre-check student admission/candidate uniqueness
     const requestAdmNumbers = new Set<string>();
     const requestCandidateCodes = new Set<string>();
 
-    const uniqueFinalUsers = finalUsers.filter(({ userData, userEmail, userName }) => {
+    const afterIntraBatchStudentCheck = afterExistenceCheck.filter(({ userData, userEmail, userName }) => {
       if (userData.role !== "student") return true;
 
       const admNumber = normalizeStudentCode(userData.adm_number);
@@ -827,6 +857,8 @@ export const bulkCreateUsers = async (
         results.failed.push({
           email: userEmail || userName,
           error: "Admission number already exists in this bulk request",
+          name: userName,
+          candidate_code: userData.candidate_code ?? "",
         });
         return false;
       }
@@ -835,6 +867,8 @@ export const bulkCreateUsers = async (
         results.failed.push({
           email: userEmail || userName,
           error: "Candidate code already exists in this bulk request",
+          name: userName,
+          candidate_code: userData.candidate_code ?? "",
         });
         return false;
       }
@@ -852,6 +886,7 @@ export const bulkCreateUsers = async (
       return true;
     });
 
+    let afterStudentUniquenessCheck = afterIntraBatchStudentCheck;
     if (requestAdmNumbers.size > 0 || requestCandidateCodes.size > 0) {
       const existingStudents = await User.find({
         role: "student",
@@ -874,33 +909,82 @@ export const bulkCreateUsers = async (
           .filter(Boolean) as string[]
       );
 
-      for (const { userData, userEmail, userName } of uniqueFinalUsers) {
-        if (userData.role !== "student") continue;
+      afterStudentUniquenessCheck = afterIntraBatchStudentCheck.filter(({ userData, userEmail, userName }) => {
+        if (userData.role !== "student") return true;
 
         const admNumber = normalizeStudentCode(userData.adm_number);
         const candidateCode = normalizeStudentCode(userData.candidate_code);
+        let isDuplicate = false;
 
         if (admNumber && existingAdmSet.has(admNumber)) {
           results.failed.push({
             email: userEmail || userName,
             error: "Admission number already exists",
+            name: userName,
+            candidate_code: userData.candidate_code ?? "",
           });
+          isDuplicate = true;
         }
 
         if (candidateCode && existingCandidateSet.has(candidateCode)) {
           results.failed.push({
             email: userEmail || userName,
             error: "Candidate code already exists",
+            name: userName,
+            candidate_code: userData.candidate_code ?? "",
           });
+          isDuplicate = true;
+        }
+
+        return !isDuplicate;
+      });
+    }
+
+    // ── Google Workspace batch (only for rows that survived every check above) ─
+    const workspaceEntries = afterStudentUniquenessCheck.filter(({ userData }) => userData.generate_mail === true);
+    const workspaceFailedEmails = new Set<string>();
+
+    if (workspaceEntries.length > 0) {
+      try {
+        const inputs: WorkspaceUserInput[] = workspaceEntries.map(({ userData, userEmail, password }) => ({
+          first_name: userData.first_name,
+          last_name: userData.last_name,
+          candidate_code: userData.candidate_code!,
+          adm_year: userData.adm_year!,
+          department: userData.department!,
+          email: userEmail,
+          password,
+        }));
+        const workspaceResultMap = await bulkCreateWorkspaceUsers(inputs);
+
+        for (const entry of workspaceEntries) {
+          const wsResult = workspaceResultMap.get(entry.userData.candidate_code!);
+          if (!wsResult || wsResult.error) {
+            results.failed.push({
+              email: entry.userEmail,
+              error: "Workspace account creation failed: " + (wsResult?.error ?? "No result"),
+              name: entry.userName,
+              candidate_code: entry.userData.candidate_code ?? "",
+            });
+            workspaceFailedEmails.add(entry.userEmail);
+          }
+        }
+      } catch (wsError) {
+        for (const entry of workspaceEntries) {
+          results.failed.push({
+            email: entry.userEmail,
+            error: "Google Workspace batch failed: " + (wsError instanceof Error ? wsError.message : "Unknown error"),
+            name: entry.userName,
+            candidate_code: entry.userData.candidate_code ?? "",
+          });
+          workspaceFailedEmails.add(entry.userEmail);
         }
       }
     }
 
-    const blockedEmails = new Set(results.failed.map((f) => f.email));
-    const finalUniqueUsers = uniqueFinalUsers.filter(({ userEmail, userName }) => {
-      const key = userEmail || userName;
-      return !blockedEmails.has(key);
-    });
+    const finalUniqueUsers = afterStudentUniquenessCheck.filter(
+      ({ userEmail }) => !workspaceFailedEmails.has(userEmail)
+    );
 
     // Preload batches for student lookups
     const batchByObjectId = new Map<string, string>();
@@ -912,10 +996,8 @@ export const bulkCreateUsers = async (
     }
 
     // Process each user
-    for (const { userData, userName, userEmail } of finalUniqueUsers) {
+    for (const { userData, userName, userEmail, password } of finalUniqueUsers) {
       try {
-        const password = userData.password || Math.random().toString(36).slice(-12) + "A1!";
-
         const createdUser = await auth.api.createUser({
           body: {
             email: userEmail,
@@ -925,7 +1007,12 @@ export const bulkCreateUsers = async (
         });
 
         if (!createdUser?.user) {
-          results.failed.push({ email: userEmail, error: "Failed to create user account" });
+          results.failed.push({
+            email: userEmail,
+            error: "Failed to create user account",
+            name: userName,
+            candidate_code: userData.candidate_code ?? "",
+          });
           continue;
         }
 
@@ -948,7 +1035,12 @@ export const bulkCreateUsers = async (
             if (!batchId) {
               try { await auth.api.removeUser({ body: { userId }, headers: request.headers as any }); } catch {}
               await User.findByIdAndDelete(userId);
-              results.failed.push({ email: userEmail, error: "Batch not found for provided batch ID" });
+              results.failed.push({
+                email: userEmail,
+                error: "Batch not found for provided batch ID",
+                name: userName,
+                candidate_code: userData.candidate_code ?? "",
+              });
               continue;
             }
             profile.batch = batchId;
@@ -973,15 +1065,36 @@ export const bulkCreateUsers = async (
           results.failed.push({
             email: userEmail,
             error: "Profile update failed: " + profileErrorMessage,
+            name: userName,
+            candidate_code: userData.candidate_code ?? "",
           });
           continue;
         }
 
-        results.success.push({ email: userEmail, role: userData.role, userId });
+        results.success.push({
+          email: userEmail,
+          role: userData.role,
+          userId,
+          name: userName,
+          candidate_code: userData.candidate_code ?? "",
+        });
+
+        if (userData.generate_mail === true) {
+          results.credentials.push({
+            name: userName,
+            candidate_code: userData.candidate_code ?? "",
+            adm_year: userData.adm_year,
+            department: userData.department,
+            email: userEmail,
+            password,
+          });
+        }
       } catch (userError) {
         results.failed.push({
           email: userEmail,
           error: userError instanceof Error ? userError.message : "Unknown error",
+          name: userName,
+          candidate_code: userData.candidate_code ?? "",
         });
       }
     }

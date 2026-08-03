@@ -6,6 +6,8 @@ export interface WorkspaceUserInput {
   candidate_code: string;
   adm_year: number;
   department: string;
+  email?: string;
+  password: string;
 }
 
 export interface WorkspaceUserResult {
@@ -13,16 +15,21 @@ export interface WorkspaceUserResult {
   error?: string;
 }
 
-function buildPrimaryEmail(first_name: string, last_name: string, candidate_code: string): string {
+/**
+ * Generated email format: [firstname][lastname][last 2 digits of candidate code]@[domain]
+ * Spaces and dots are stripped from the name, and the result is lowercased.
+ */
+export function buildPrimaryEmail(first_name: string, last_name: string, candidate_code: string): string {
   const domain = process.env.GOOGLE_HD || "uck.ac.in";
-  const first = first_name.toLowerCase().replace(/\s+/g, "");
-  const last = last_name.toLowerCase().replace(/\s+/g, "");
+  const clean = (value: string) => value.toLowerCase().replace(/[\s.]+/g, "");
+  const first = clean(first_name);
+  const last = clean(last_name);
   const suffix = candidate_code.slice(-2);
   return `${first}${last}${suffix}@${domain}`;
 }
 
-function generatePassword(length = 16): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$";
+export function generatePassword(length = 8): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
   let password = "";
   for (let i = 0; i < length; i++) {
     password += chars[Math.floor(Math.random() * chars.length)];
@@ -68,7 +75,7 @@ export async function bulkCreateWorkspaceUsers(
 
   // Fire all insert requests concurrently — effectively the same as a batch
   const insertPromises = users.map(async (user) => {
-    const primaryEmail = buildPrimaryEmail(user.first_name, user.last_name, user.candidate_code);
+    const primaryEmail = user.email || buildPrimaryEmail(user.first_name, user.last_name, user.candidate_code);
     try {
       await admin.users.insert({
         requestBody: {
@@ -84,7 +91,7 @@ export async function bulkCreateWorkspaceUsers(
               value: user.candidate_code, // Employee ID = Candidate Code
             },
           ],
-          password: generatePassword(),
+          password: user.password,
           changePasswordAtNextLogin: true,
         },
       });
