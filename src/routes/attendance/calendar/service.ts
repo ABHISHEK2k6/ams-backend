@@ -20,21 +20,39 @@ interface CalendarDayQuery {
 
 const ATTENDED_STATUSES = ["present", "late"];
 
+type CalendarUser = {
+  _id: unknown;
+  role: string;
+  profile?: { department?: string; child?: unknown } | null;
+};
+function resolveRecordStudentId(user: CalendarUser): mongoose.Types.ObjectId | null {
+  if (user.role === "student") {
+    return user._id as mongoose.Types.ObjectId;
+  }
+  if (user.role === "parent") {
+    const childId = user.profile?.child;
+    if (!childId) return null;
+    return new mongoose.Types.ObjectId(childId as any);
+  }
+  return null;
+}
+
 /**
  * Resolves the AttendanceSession match stage for a role.
  * - student: only sessions where they have a record
+ * - parent: only sessions where their linked child has a record
  * - teacher: only sessions they created
  * - hod/principal/admin: batch-scoped via the shared access hierarchy (@/lib/scope)
- * - everyone else (parent, staff): no calendar data yet
+ * - everyone else (staff): no calendar data yet
  */
-async function buildScopeMatch(user: {
-  _id: unknown;
-  role: string;
-  profile?: { department?: string } | null;
-}): Promise<Record<string, unknown> | null> {
+async function buildScopeMatch(user: CalendarUser): Promise<Record<string, unknown> | null> {
   switch (user.role) {
     case "student":
-      return { "records.student": user._id };
+    case "parent": {
+      const studentId = resolveRecordStudentId(user);
+      if (!studentId) return null;
+      return { "records.student": studentId };
+    }
     case "teacher":
       return { created_by: user._id };
     case "hod":
@@ -92,11 +110,12 @@ export const getCalendarMonthHandler = async (
     };
     applyDrilldownFilters(match, batch, subject);
 
-    if (user.role === "student") {
+    if (user.role === "student" || user.role === "parent") {
+      const studentId = resolveRecordStudentId(user);
       const rows = await AttendanceSession.aggregate([
         { $match: match },
         { $unwind: "$records" },
-        { $match: { "records.student": user._id } },
+        { $match: { "records.student": studentId } },
         {
           $group: {
             _id: { $dateToString: { format: "%Y-%m-%d", date: "$start_time", timezone: "UTC" } },
@@ -186,9 +205,10 @@ export const getCalendarDayHandler = async (
       .populate("created_by", "first_name last_name")
       .sort({ start_time: 1 });
 
-    if (user.role === "student") {
+    if (user.role === "student" || user.role === "parent") {
+      const studentId = resolveRecordStudentId(user);
       const result = sessions.map((s: any) => {
-        const record = (s.records || []).find((r: any) => String(r.student) === String(user._id));
+        const record = (s.records || []).find((r: any) => String(r.student) === String(studentId));
         return {
           sessionId: s._id,
           subject: s.subject?.name ?? "",
