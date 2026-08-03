@@ -666,7 +666,7 @@ export const listUser = async (
         .select("-password_hash")
         .populate({ path: "profile.batch", select: "name id adm_year department" })
         .populate({ path: "profile.child", select: "first_name last_name email role profile" })
-        .sort({ _id: -1 })
+        .sort({ "profile.candidate_code": 1, _id: -1 })
         .skip(skip)
         .limit(limit)
         .lean(),
