@@ -12,6 +12,12 @@ export const auth = betterAuth({
   trustedOrigins: [process.env.CORS_ORIGIN, process.env.CORS_ORIGIN_DEV].filter(
     (origin): origin is string => !!origin
   ),
+  account: {
+        accountLinking: {
+            enabled: true,
+            trustedProviders: ["google"],
+        }
+    },
   user: {
     modelName: "user",
     additionalFields: {
