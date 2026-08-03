@@ -1053,6 +1053,7 @@ export const bulkCreateUsers = async (
             role: userData.role,
             first_name: userData.first_name,
             last_name: userData.last_name,
+            emailVerified: true,
             updatedAt: new Date(),
             profile,
           });
