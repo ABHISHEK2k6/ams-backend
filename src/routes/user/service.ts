@@ -373,19 +373,23 @@ export const createUser = async (
       });
     }
 
-    // Handle parent: resolve childID → child User._id
-    if (user.role === "parent" && (profile as any)?.childID) {
-      const childUser = await User.findById((profile as any).childID);
-      if (!childUser || childUser.role !== "student") {
+    // Handle parent: resolve child_candidate_code → child User._id
+    if (user.role === "parent" && (profile as any)?.child_candidate_code) {
+      const rawCode = (profile as any).child_candidate_code;
+      const code = normalizeStudentCode(rawCode);
+      const childUser = code
+        ? await User.findOne({ role: "student", "profile.candidate_code": code })
+        : null;
+      if (!childUser) {
         return reply.status(404).send({
           status_code: 404,
-          message: "Invalid childID: student user not found.",
+          message: `No student found with candidate code "${rawCode}"`,
           data: "",
         });
       }
       await User.findByIdAndUpdate(userId, {
         "profile.child": childUser._id,
-        "profile.childID": undefined,
+        "profile.child_candidate_code": undefined,
       });
     }
 
@@ -500,18 +504,22 @@ export const updateUser = async (
         }
       }
 
-      // Special case: parent childID → resolve to User._id
-      if ((body.profile as any).childID) {
-        const childUser = await User.findById((body.profile as any).childID);
-        if (!childUser || childUser.role !== "student") {
+      // Special case: parent child_candidate_code → resolve to User._id
+      if ((body.profile as any).child_candidate_code) {
+        const rawCode = (body.profile as any).child_candidate_code;
+        const code = normalizeStudentCode(rawCode);
+        const childUser = code
+          ? await User.findOne({ role: "student", "profile.candidate_code": code })
+          : null;
+        if (!childUser) {
           return reply.status(404).send({
             status_code: 404,
-            message: "Invalid childID: student user not found.",
+            message: `No student found with candidate code "${rawCode}"`,
             data: "",
           });
         }
         updatePayload["profile.child"] = childUser._id;
-        delete updatePayload["profile.childID"];
+        delete updatePayload["profile.child_candidate_code"];
       }
     }
 

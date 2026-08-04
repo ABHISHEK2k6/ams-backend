@@ -47,10 +47,10 @@ const staffProfileSchema = {
 
 const parentProfileSchema = {
   type: "object",
-  required: ["relation", "childID"],
+  required: ["relation", "child_candidate_code"],
   properties: {
     relation: { type: "string", enum: ["mother", "father", "guardian"] },
-    childID:  { type: "string" }, // User._id of the student child
+    child_candidate_code: { type: "string" }, // candidate code of the student child, resolved to User._id server-side
   },
   additionalProperties: false,
 };
