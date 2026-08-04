@@ -349,22 +349,25 @@ export const createUser = async (
       }
     }
 
+    // Merge profile fields via dot-notation rather than replacing the whole `profile`
+    const updatePayload: Record<string, unknown> = {
+      name,
+      first_name: first_name_cased,
+      last_name: last_name_cased,
+      phone,
+      image,
+      gender,
+      updatedAt: new Date(),
+    };
+    if (profile) {
+      for (const [key, val] of Object.entries(profile)) {
+        updatePayload[`profile.${key}`] = val;
+      }
+    }
+
     let user;
     try {
-      user = await User.findByIdAndUpdate(
-        userId,
-        {
-          name,
-          first_name: first_name_cased,
-          last_name: last_name_cased,
-          phone,
-          image,
-          gender,
-          updatedAt: new Date(),
-          ...(profile ? { profile } : {}),
-        },
-        { new: true }
-      );
+      user = await User.findByIdAndUpdate(userId, updatePayload, { new: true });
     } catch (updateError) {
       if (isDuplicateKeyError(updateError)) {
         const duplicateResponse = await resolveDuplicateStudentResponseFromError(
