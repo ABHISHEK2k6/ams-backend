@@ -3,9 +3,13 @@ import { google } from "googleapis";
 export interface WorkspaceUserInput {
   first_name: string;
   last_name: string;
-  candidate_code: string;
-  adm_year: number;
-  department: string;
+  role: string;
+  /** Present for students; */
+  candidate_code?: string;
+  adm_year?: number;
+  department?: string;
+  /** Unique suffix used to build the email when no manual email is given — candidate code's last 2 digits for students, a random suffix otherwise. */
+  unique_suffix: string;
   email?: string;
   password: string;
 }
@@ -15,17 +19,34 @@ export interface WorkspaceUserResult {
   error?: string;
 }
 
+/** Canonical institution email domain — single source of truth for generation and validation. */
+export function getEmailDomain(): string {
+  return process.env.GOOGLE_HD || "uck.ac.in";
+}
+
+/** True if `email` belongs to the configured institution domain (case-insensitive). */
+export function hasRequiredEmailDomain(email: string): boolean {
+  const domain = getEmailDomain().toLowerCase();
+  return email.trim().toLowerCase().endsWith(`@${domain}`);
+}
+
 /**
- * Generated email format: [firstname][lastname][last 2 digits of candidate code]@[domain]
+ * Generated email format: [firstname][lastname][unique suffix]@[domain]
  * Spaces and dots are stripped from the name, and the result is lowercased.
  */
-export function buildPrimaryEmail(first_name: string, last_name: string, candidate_code: string): string {
-  const domain = process.env.GOOGLE_HD || "uck.ac.in";
+export function buildPrimaryEmail(first_name: string, last_name: string, uniqueSuffix: string): string {
+  const domain = getEmailDomain();
   const clean = (value: string) => value.toLowerCase().replace(/[\s.]+/g, "");
   const first = clean(first_name);
   const last = clean(last_name);
-  const suffix = candidate_code.slice(-2);
-  return `${first}${last}${suffix}@${domain}`;
+  return `${first}${last}${uniqueSuffix.toLowerCase()}@${domain}`;
+}
+
+/** Org unit for a newly provisioned Workspace account — students are nested by year/department, everyone else is flat. */
+function orgUnitPathFor(role: string, adm_year?: number, department?: string): string {
+  if (role === "student" && adm_year && department) return `/Students/${adm_year}/${department}`;
+  if (role === "parent") return "/Parents";
+  return "/Faculty";
 }
 
 export function generatePassword(length = 8): string {
@@ -39,7 +60,7 @@ export function generatePassword(length = 8): string {
 
 /**
  * Creates multiple Google Workspace users in a SINGLE batch HTTP request.
- * Returns a map keyed by candidate_code -> { primaryEmail, error? }
+ * Returns a map keyed by the target primary email -> { primaryEmail, error? }
  */
 export async function bulkCreateWorkspaceUsers(
   users: WorkspaceUserInput[]
@@ -75,7 +96,7 @@ export async function bulkCreateWorkspaceUsers(
 
   // Fire all insert requests concurrently — effectively the same as a batch
   const insertPromises = users.map(async (user) => {
-    const primaryEmail = user.email || buildPrimaryEmail(user.first_name, user.last_name, user.candidate_code);
+    const primaryEmail = user.email || buildPrimaryEmail(user.first_name, user.last_name, user.unique_suffix);
     try {
       await admin.users.insert({
         requestBody: {
@@ -84,24 +105,21 @@ export async function bulkCreateWorkspaceUsers(
             givenName: user.first_name,
             familyName: user.last_name,
           },
-          orgUnitPath: `/Students/${user.adm_year}/${user.department}`,
-          externalIds: [
-            {
-              type: "organization",
-              value: user.candidate_code, // Employee ID = Candidate Code
-            },
-          ],
+          orgUnitPath: orgUnitPathFor(user.role, user.adm_year, user.department),
+          ...(user.candidate_code
+            ? { externalIds: [{ type: "organization", value: user.candidate_code }] }
+            : {}),
           password: user.password,
           changePasswordAtNextLogin: true,
         },
       });
-      results.set(user.candidate_code, { primaryEmail });
+      results.set(primaryEmail, { primaryEmail });
     } catch (err: any) {
       const errMsg =
         err?.response?.data?.error?.message ||
         err?.message ||
         "Unknown error";
-      results.set(user.candidate_code, { primaryEmail: "", error: errMsg });
+      results.set(primaryEmail, { primaryEmail: "", error: errMsg });
     }
   });
 

@@ -124,9 +124,15 @@ export const bulkCreateSchema: RouteShorthandOptions["schema"] = {
             adm_number:     { type: "string" },
             adm_year:       { type: "number" },
             candidate_code: { type: "string" },
-            department:     { type: "string", enum: ["CSE", "ECE", "IT"] },
+            department:     { type: "string" },
             date_of_birth:  { type: "string", format: "date" },
             batch:          { type: "string" },
+            // Staff-specific flat fields (teacher/hod/principal/staff/admin)
+            designation:    { type: "string" },
+            date_of_joining:{ type: "string", format: "date" },
+            // Parent-specific flat fields
+            relation:       { type: "string", enum: ["mother", "father", "guardian"] },
+            child_candidate_code: { type: "string" },
           },
           additionalProperties: false,
         },

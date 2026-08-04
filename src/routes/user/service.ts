@@ -8,6 +8,8 @@ import {
   bulkCreateWorkspaceUsers,
   buildPrimaryEmail,
   generatePassword,
+  getEmailDomain,
+  hasRequiredEmailDomain,
   type WorkspaceUserInput,
 } from "@/lib/google-workspace";
 import { hashPassword } from "better-auth/crypto";
@@ -720,6 +722,10 @@ export const bulkCreateUsers = async (
         department?: string;
         date_of_birth?: Date;
         batch?: string;
+        designation?: string;
+        date_of_joining?: string;
+        relation?: string;
+        child_candidate_code?: string;
       }>;
     }).users;
 
@@ -760,12 +766,12 @@ export const bulkCreateUsers = async (
     };
 
     const missingWorkspaceFields = users.filter(
-      (u) => u.generate_mail === true && (!u.candidate_code || !u.adm_year || !u.department)
+      (u) => u.generate_mail === true && u.role === "student" && (!u.candidate_code || !u.adm_year || !u.department)
     );
     for (const u of missingWorkspaceFields) {
       results.failed.push({
         email: `${u.first_name} ${u.last_name}`,
-        error: "generate_mail requires candidate_code, adm_year, and department",
+        error: "generate_mail requires candidate_code, adm_year, and department for students",
         name: `${u.first_name} ${u.last_name}`,
         candidate_code: u.candidate_code ?? "",
       });
@@ -775,21 +781,35 @@ export const bulkCreateUsers = async (
       userName: string;
       userEmail: string;
       password: string;
+      uniqueSuffix: string;
     };
     const usersToProcess: ProcessEntry[] = [];
 
     for (const userData of users) {
-      if (userData.generate_mail === true && (!userData.candidate_code || !userData.adm_year || !userData.department)) {
+      if (userData.generate_mail === true && userData.role === "student" && (!userData.candidate_code || !userData.adm_year || !userData.department)) {
         continue;
       }
 
       const userName = `${userData.first_name} ${userData.last_name}`;
       const password = userData.password || generatePassword();
+      const uniqueSuffix = userData.candidate_code
+        ? userData.candidate_code.slice(-2)
+        : Math.random().toString(36).slice(2, 5);
       let userEmail: string;
 
       if (userData.generate_mail === true) {
         const trimmedEmail = userData.email?.trim();
-        userEmail = trimmedEmail || buildPrimaryEmail(userData.first_name, userData.last_name, userData.candidate_code!);
+        userEmail = trimmedEmail || buildPrimaryEmail(userData.first_name, userData.last_name, uniqueSuffix);
+
+        if (!hasRequiredEmailDomain(userEmail)) {
+          results.failed.push({
+            email: userEmail,
+            error: `Email must be on the "${getEmailDomain()}" domain when Generate Mails is true`,
+            name: userName,
+            candidate_code: userData.candidate_code ?? "",
+          });
+          continue;
+        }
       } else {
         if (!userData.email) {
           results.failed.push({
@@ -803,7 +823,7 @@ export const bulkCreateUsers = async (
         userEmail = userData.email;
       }
 
-      usersToProcess.push({ userData, userName, userEmail, password });
+      usersToProcess.push({ userData, userName, userEmail, password, uniqueSuffix });
     }
 
     // Duplicate emails within this same upload (e.g. two rows generating the same address)
@@ -946,19 +966,21 @@ export const bulkCreateUsers = async (
 
     if (workspaceEntries.length > 0) {
       try {
-        const inputs: WorkspaceUserInput[] = workspaceEntries.map(({ userData, userEmail, password }) => ({
+        const inputs: WorkspaceUserInput[] = workspaceEntries.map(({ userData, userEmail, password, uniqueSuffix }) => ({
           first_name: userData.first_name,
           last_name: userData.last_name,
-          candidate_code: userData.candidate_code!,
-          adm_year: userData.adm_year!,
-          department: userData.department!,
+          role: userData.role,
+          candidate_code: userData.candidate_code,
+          adm_year: userData.adm_year,
+          department: userData.department,
+          unique_suffix: uniqueSuffix,
           email: userEmail,
           password,
         }));
         const workspaceResultMap = await bulkCreateWorkspaceUsers(inputs);
 
         for (const entry of workspaceEntries) {
-          const wsResult = workspaceResultMap.get(entry.userData.candidate_code!);
+          const wsResult = workspaceResultMap.get(entry.userEmail);
           if (!wsResult || wsResult.error) {
             results.failed.push({
               email: entry.userEmail,
@@ -995,6 +1017,27 @@ export const bulkCreateUsers = async (
       if (batch.id) batchByCode.set(batch.id.toUpperCase(), batch._id.toString());
     }
 
+    // Preload child lookups for parent rows — resolve candidate code -> student User._id
+    // in one query, rather than per-row, matching the batch-preload pattern above.
+    const childCandidateCodes = new Set<string>();
+    for (const { userData } of finalUniqueUsers) {
+      const code = normalizeStudentCode(userData.child_candidate_code);
+      if (userData.role === "parent" && code) childCandidateCodes.add(code);
+    }
+    const childIdByCandidateCode = new Map<string, string>();
+    if (childCandidateCodes.size > 0) {
+      const childStudents = await User.find({
+        role: "student",
+        "profile.candidate_code": { $in: [...childCandidateCodes] },
+      })
+        .select("_id profile.candidate_code")
+        .lean();
+      for (const child of childStudents as Array<{ _id: any; profile?: { candidate_code?: string } }>) {
+        const code = normalizeStudentCode(child.profile?.candidate_code);
+        if (code) childIdByCandidateCode.set(code, child._id.toString());
+      }
+    }
+
     // Process each user
     for (const { userData, userName, userEmail, password } of finalUniqueUsers) {
       try {
@@ -1018,7 +1061,7 @@ export const bulkCreateUsers = async (
 
         const userId = createdUser.user.id;
 
-        // Build profile for students (other roles can extend later)
+        // Build profile — shape depends on role
         const profile: Record<string, unknown> = {};
         if (userData.role === "student") {
           if (userData.adm_number) profile.adm_number = userData.adm_number;
@@ -1044,6 +1087,30 @@ export const bulkCreateUsers = async (
               continue;
             }
             profile.batch = batchId;
+          }
+        } else if (isStaffRole(userData.role)) {
+          if (userData.designation) profile.designation = userData.designation;
+          if (userData.department) profile.department = userData.department;
+          if (userData.date_of_joining) profile.date_of_joining = userData.date_of_joining;
+        } else if (userData.role === "parent") {
+          if (userData.relation) profile.relation = userData.relation;
+
+          if (userData.child_candidate_code) {
+            const childCode = normalizeStudentCode(userData.child_candidate_code);
+            const childId = childCode ? childIdByCandidateCode.get(childCode) : undefined;
+
+            if (!childId) {
+              try { await auth.api.removeUser({ body: { userId }, headers: request.headers as any }); } catch {}
+              await User.findByIdAndDelete(userId);
+              results.failed.push({
+                email: userEmail,
+                error: `No student found with candidate code "${userData.child_candidate_code}"`,
+                name: userName,
+                candidate_code: "",
+              });
+              continue;
+            }
+            profile.child = new mongoose.Types.ObjectId(childId);
           }
         }
 
