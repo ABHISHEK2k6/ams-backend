@@ -642,12 +642,13 @@ export const listUser = async (
       role:    string;
       search?: string;
       batch?:  string;
+      full?:   boolean;
     };
   }>,
   reply: FastifyReply
 ) => {
   try {
-    const { page = 1, limit = 10, role, search, batch } = request.query;
+    const { page = 1, limit = 10, role, search, batch, full = false } = request.query;
     const skip = (page - 1) * limit;
 
     // Base filter
@@ -671,17 +672,24 @@ export const listUser = async (
       ];
     }
 
+    let usersQuery = User.find(filter);
+    usersQuery = full
+      ? usersQuery
+          .select("-password_hash")
+          .populate({ path: "profile.batch", select: "name id adm_year department" })
+          .populate({ path: "profile.child", select: "first_name last_name email role profile" })
+      : usersQuery.select(
+          "name email role phone createdAt profile.candidate_code profile.adm_number profile.designation profile.relation profile.department"
+        );
+
     const [users, totalCount] = await Promise.all([
-      User.find(filter)
-        .select("-password_hash")
-        .populate({ path: "profile.batch", select: "name id adm_year department" })
-        .populate({ path: "profile.child", select: "first_name last_name email role profile" })
+      usersQuery
         .sort({ "profile.candidate_code": 1, _id: -1 })
         .skip(skip)
         .limit(limit)
         .lean(),
       User.countDocuments(filter),
-    ]); 
+    ]);
 
     const totalPages = Math.ceil(totalCount / limit);
 
