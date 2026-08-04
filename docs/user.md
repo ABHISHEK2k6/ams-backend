@@ -315,6 +315,9 @@ List all users of a specific role with pagination, search, and filtering capabil
 - `page` (optional) - Page number for pagination (default: 1, minimum: 1)
 - `limit` (optional) - Number of results per page (default: 10, minimum: 1, maximum: 100)
 - `search` (optional) - Search query to filter by name, email, first_name, or last_name (case-insensitive)
+- `batch` (optional) - Filter users by a specific batch ID.
+- `sort` (optional) - Field to sort by. Can be `name`, `email`, or `createdAt`. Defaults to `name`.
+- `order` (optional) - Sort order. Can be `asc` (ascending) or `desc` (descending). Defaults to `asc`.
 
 **Example Requests:**
 ```bash
@@ -326,6 +329,12 @@ GET /user/list?role=teacher&page=2&limit=20
 
 # Search for parents
 GET /user/list?role=parent&search=john
+
+# List students sorted by name Z-A
+GET /user/list?role=student&sort=name&order=desc
+
+# List newest teachers
+GET /user/list?role=teacher&sort=createdAt&order=desc
 
 # List admins with custom limit
 GET /user/list?role=admin&limit=50

@@ -1,5 +1,5 @@
 import { FastifyRequest, FastifyReply } from "fastify";
-import mongoose from "mongoose";
+import mongoose, { SortOrder } from "mongoose";
 import { User, Account } from "@/plugins/db/models/auth.model";
 import { Batch } from "@/plugins/db/models/academics.model";
 import { auth } from "@/plugins/auth";
@@ -291,6 +291,7 @@ export const createUser = async (
 ) => {
   let duplicateCheckProfile: Record<string, unknown> | undefined;
   let duplicateExcludeUserId: string | undefined;
+  let childNameForResponse: string | undefined;
   try {
     const { image, phone, first_name, last_name, gender, profile } = request.body as {
       image?: string;
@@ -310,7 +311,7 @@ export const createUser = async (
     // Derive name from first_name + last_name
     const name = `${first_name_cased} ${last_name_cased}`;
 
-    const existingUser = await User.findById(userId).select("role").lean();
+    const existingUser = await User.findById(userId).select("role profile").lean();
     if (!existingUser) {
       return reply.status(404).send({
         status_code: 404,
@@ -319,24 +320,42 @@ export const createUser = async (
       });
     }
 
-    if (profile && typeof profile.batch === "string") {
-      profile.batch = new mongoose.Types.ObjectId(profile.batch as string);
+    // Merge incoming profile with existing profile to avoid overwriting pre-filled data (like candidate_code)
+    const mergedProfile = { ...(existingUser.profile as object ?? {}), ...(profile ?? {}) };
+
+    // Handle parent: resolve child_candidate_code → child User._id
+    if (existingUser.role === "parent" && (mergedProfile as any)?.child_candidate_code) {
+      const rawCode = (mergedProfile as any).child_candidate_code;
+      const code = normalizeStudentCode(rawCode);
+      const childUser = code
+        ? await User.findOne({ role: "student", "profile.candidate_code": code }).lean()
+        : null;
+
+      if (!childUser) {
+        return reply.status(404).send({
+          status_code: 404,
+          message: `No student found with candidate code "${rawCode}"`,
+          data: "",
+        });
+      }
+
+      (mergedProfile as any).child = childUser._id;
+      delete (mergedProfile as any).child_candidate_code;
+      childNameForResponse = childUser.name;
     }
 
-    // Silently drop them rather than erroring, so the rest of onboarding still succeeds.
-    if (profile) {
-      delete profile.candidate_code;
-      delete profile.child_candidate_code;
+    if (mergedProfile && typeof (mergedProfile as any).batch === "string") {
+      (mergedProfile as any).batch = new mongoose.Types.ObjectId((mergedProfile as any).batch as string);
+    }
+    if (mergedProfile) {
+      duplicateCheckProfile = mergedProfile;
     }
 
-    if (profile) {
-      duplicateCheckProfile = profile;
-    }
-
-    if (existingUser.role === "student" && profile) {
+    if (existingUser.role === "student" && mergedProfile) {
       try {
-        const { admNumber } = await assertStudentUniqueFields(profile, userId);
-        if (admNumber) profile.adm_number = admNumber;
+        const { admNumber, candidateCode } = await assertStudentUniqueFields(mergedProfile, userId);
+        if (admNumber) (mergedProfile as any).adm_number = admNumber;
+        if (candidateCode) (mergedProfile as any).candidate_code = candidateCode;
       } catch (validationError) {
         if (validationError instanceof StudentUniqueFieldError) {
           return reply.status(422).send({
@@ -349,30 +368,27 @@ export const createUser = async (
       }
     }
 
-    // Merge profile fields via dot-notation rather than replacing the whole `profile`
-    const updatePayload: Record<string, unknown> = {
-      name,
-      first_name: first_name_cased,
-      last_name: last_name_cased,
-      phone,
-      image,
-      gender,
-      updatedAt: new Date(),
-    };
-    if (profile) {
-      for (const [key, val] of Object.entries(profile)) {
-        updatePayload[`profile.${key}`] = val;
-      }
-    }
-
     let user;
     try {
-      user = await User.findByIdAndUpdate(userId, updatePayload, { new: true });
+      user = await User.findByIdAndUpdate(
+        userId,
+        {
+          name,
+          first_name: first_name_cased,
+          last_name: last_name_cased,
+          phone,
+          image,
+          gender,
+          updatedAt: new Date(),
+          profile: mergedProfile,
+        },
+        { new: true }
+      );
     } catch (updateError) {
       if (isDuplicateKeyError(updateError)) {
         const duplicateResponse = await resolveDuplicateStudentResponseFromError(
           updateError,
-          profile ?? {},
+          mergedProfile ?? {},
           userId
         );
         return reply.status(422).send(duplicateResponse);
@@ -391,7 +407,7 @@ export const createUser = async (
     return reply.status(201).send({
       status_code: 201,
       message: "User profile created successfully",
-      data: "",
+      data: childNameForResponse ? { child_name: childNameForResponse } : "",
     });
   } catch (e) {
     if (isDuplicateKeyError(e) && duplicateCheckProfile) {
@@ -420,6 +436,7 @@ export const updateUser = async (
 ) => {
   let duplicateCheckProfile: Record<string, unknown> | undefined;
   let duplicateExcludeUserId: string | undefined;
+  let childNameForResponse: string | undefined;
   try {
     const userId = request.params.id || request.user.id;
     duplicateExcludeUserId = userId;
@@ -510,7 +527,7 @@ export const updateUser = async (
         const rawCode = (body.profile as any).child_candidate_code;
         const code = normalizeStudentCode(rawCode);
         const childUser = code
-          ? await User.findOne({ role: "student", "profile.candidate_code": code })
+          ? await User.findOne({ role: "student", "profile.candidate_code": code }).lean()
           : null;
         if (!childUser) {
           return reply.status(404).send({
@@ -521,6 +538,7 @@ export const updateUser = async (
         }
         updatePayload["profile.child"] = childUser._id;
         delete updatePayload["profile.child_candidate_code"];
+        childNameForResponse = childUser.name;
       }
     }
 
@@ -579,7 +597,7 @@ export const updateUser = async (
     return reply.status(200).send({
       status_code: 200,
       message: "User updated successfully",
-      data: "",
+      data: childNameForResponse ? { child_name: childNameForResponse } : "",
     });
   } catch (e) {
     if (isDuplicateKeyError(e) && duplicateCheckProfile) {
@@ -643,13 +661,15 @@ export const listUser = async (
       role:    string;
       search?: string;
       batch?:  string;
+      sort?:   "name" | "email" | "createdAt";
+      order?:  "asc" | "desc";
       full?:   boolean;
     };
   }>,
   reply: FastifyReply
 ) => {
   try {
-    const { page = 1, limit = 10, role, search, batch, full = false } = request.query;
+    const { page = 1, limit = 10, role, search, batch, sort = "name", order = "asc", full = false } = request.query;
     const skip = (page - 1) * limit;
 
     // Base filter
@@ -673,19 +693,28 @@ export const listUser = async (
       ];
     }
 
+    // Build sort object based on query params
+    const sortField = sort === "createdAt" ? "_id" : sort;
+    const sortOrder: SortOrder = order === "desc" ? -1 : 1;
+    const sortOption = { [sortField]: sortOrder };
+
     let usersQuery = User.find(filter);
-    usersQuery = full
-      ? usersQuery
-          .select("-password_hash")
-          .populate({ path: "profile.batch", select: "name id adm_year department" })
-          .populate({ path: "profile.child", select: "first_name last_name email role profile" })
-      : usersQuery.select(
-          "name email role phone createdAt profile.candidate_code profile.adm_number profile.designation profile.relation profile.department"
-        );
+
+    // Conditionally select fields based on the 'full' parameter
+    if (full) {
+      usersQuery = usersQuery
+        .select("-password_hash")
+        .populate({ path: "profile.batch", select: "name id adm_year department" })
+        .populate({ path: "profile.child", select: "first_name last_name email role profile" });
+    } else {
+      usersQuery = usersQuery.select(
+        "name email role phone createdAt profile.candidate_code profile.adm_number profile.designation profile.relation profile.department"
+      );
+    }
 
     const [users, totalCount] = await Promise.all([
       usersQuery
-        .sort({ "profile.candidate_code": 1, _id: -1 })
+        .sort(sortOption)
         .skip(skip)
         .limit(limit)
         .lean(),

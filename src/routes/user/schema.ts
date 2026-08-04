@@ -16,6 +16,8 @@ export const userListSchema: RouteShorthandOptions["schema"] = {
       search: { type: "string", minLength: 1 },
       batch: { type: "string" },
       full: { type: "boolean", default: false },
+      sort: { type: "string", enum: ["name", "email", "createdAt"], default: "name" },
+      order: { type: "string", enum: ["asc", "desc"], default: "asc" },
     },
   },
 };

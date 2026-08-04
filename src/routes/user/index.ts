@@ -30,7 +30,7 @@ export default async function (fastify: FastifyInstance) {
   fastify.get<{ Params: { id: string } }>("/:id", getUser);
   fastify.delete<{ Params: { id: string } }>("/:id", { preHandler: [isAdmin] }, deleteUser);
   fastify.put<{ Params: { id: string } }>("/:id", { schema: userUpdateSchema, preHandler: [isAdminHodPrincipal] }, updateUser);
-  fastify.get<{ Querystring: { page?: number; limit?: number; role: string; search?: string; } }>("/list", { schema: userListSchema, preHandler: [isAnyStaff] }, listUser);
+  fastify.get<{ Querystring: { page?: number; limit?: number; role: string; search?: string; batch?: string; sort?: "name" | "email" | "createdAt"; order?: "asc" | "desc"; } }>("/list", { schema: userListSchema, preHandler: [isAnyStaff] }, listUser);
 
   // Admin directly sets another user's password — works even if that user
   // has never had a "credential" account before (e.g. Google-only sign-in),
