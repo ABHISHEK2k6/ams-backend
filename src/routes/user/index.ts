@@ -5,7 +5,7 @@ import {
   FastifyInstance,
   RouteShorthandOptions,
 } from "fastify";
-import { isAdmin, isAnyStaff, isParent } from "@/middleware/roles";
+import { isAdmin, isAdminHodPrincipal, isAnyStaff, isParent } from "@/middleware/roles";
 
 import { userCreateSchema, userUpdateSchema, userListSchema, bulkCreateSchema, setPasswordSchema, resetPasswordSchema } from "./schema";
 import { createUser, deleteUser, getUser, listUser, updateUser, bulkCreateUsers, setPassword, resetUserPassword } from "./service";
@@ -29,7 +29,7 @@ export default async function (fastify: FastifyInstance) {
   fastify.post("/bulk", { schema: bulkCreateSchema, preHandler: [isAdmin] }, bulkCreateUsers);
   fastify.get<{ Params: { id: string } }>("/:id", getUser);
   fastify.delete<{ Params: { id: string } }>("/:id", { preHandler: [isAdmin] }, deleteUser);
-  fastify.put<{ Params: { id: string } }>("/:id", { schema: userUpdateSchema, preHandler: [isAdmin] }, updateUser);
+  fastify.put<{ Params: { id: string } }>("/:id", { schema: userUpdateSchema, preHandler: [isAdminHodPrincipal] }, updateUser);
   fastify.get<{ Querystring: { page?: number; limit?: number; role: string; search?: string; } }>("/list", { schema: userListSchema, preHandler: [isAnyStaff] }, listUser);
 
   // Admin directly sets another user's password — works even if that user

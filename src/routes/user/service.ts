@@ -49,6 +49,12 @@ const buildUserPayload = (user: any) => ({
 const STAFF_ROLES = ["teacher", "principal", "hod", "admin", "staff"] as const;
 const isStaffRole = (role: string) => (STAFF_ROLES as readonly string[]).includes(role);
 
+/**
+ * Institution-assigned identifiers (a student's own candidate code, a parent's linked
+ * child) are set by staff, never chosen by the account holder
+ */
+const canManageRestrictedFields = (role: string) => ["admin", "hod", "principal"].includes(role);
+
 const ADMISSION_DUPLICATE_STATUS_CODE = 4221;
 const CANDIDATE_DUPLICATE_STATUS_CODE = 4222;
 const BOTH_DUPLICATE_STATUS_CODE = 4223;
@@ -316,15 +322,21 @@ export const createUser = async (
     if (profile && typeof profile.batch === "string") {
       profile.batch = new mongoose.Types.ObjectId(profile.batch as string);
     }
+
+    // Silently drop them rather than erroring, so the rest of onboarding still succeeds.
+    if (profile) {
+      delete profile.candidate_code;
+      delete profile.child_candidate_code;
+    }
+
     if (profile) {
       duplicateCheckProfile = profile;
     }
 
     if (existingUser.role === "student" && profile) {
       try {
-        const { admNumber, candidateCode } = await assertStudentUniqueFields(profile, userId);
+        const { admNumber } = await assertStudentUniqueFields(profile, userId);
         if (admNumber) profile.adm_number = admNumber;
-        if (candidateCode) profile.candidate_code = candidateCode;
       } catch (validationError) {
         if (validationError instanceof StudentUniqueFieldError) {
           return reply.status(422).send({
@@ -370,26 +382,6 @@ export const createUser = async (
         status_code: 404,
         message: "User not found",
         data: "",
-      });
-    }
-
-    // Handle parent: resolve child_candidate_code → child User._id
-    if (user.role === "parent" && (profile as any)?.child_candidate_code) {
-      const rawCode = (profile as any).child_candidate_code;
-      const code = normalizeStudentCode(rawCode);
-      const childUser = code
-        ? await User.findOne({ role: "student", "profile.candidate_code": code })
-        : null;
-      if (!childUser) {
-        return reply.status(404).send({
-          status_code: 404,
-          message: `No student found with candidate code "${rawCode}"`,
-          data: "",
-        });
-      }
-      await User.findByIdAndUpdate(userId, {
-        "profile.child": childUser._id,
-        "profile.child_candidate_code": undefined,
       });
     }
 
@@ -492,6 +484,12 @@ export const updateUser = async (
           }
         }
       }
+    }
+
+    // Institution-assigned identifiers
+    if (body.profile && !canManageRestrictedFields(request.user.role)) {
+      delete body.profile.candidate_code;
+      delete body.profile.child_candidate_code;
     }
 
     // Profile: merge-update fields using dot-notation to avoid overwriting other profile fields
