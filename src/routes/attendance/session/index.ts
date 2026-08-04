@@ -45,9 +45,9 @@ export default async function (fastify: FastifyInstance) {
     preHandler: [isAnyStaff] 
   }, getRecentSessions);
 
-  fastify.get<{ Params: { id: string } }>("/:id", { 
-    preHandler: [isAnyStaff] 
-  }, getSession);
+  // Accessible to staff (full access) as well as students/parents, who are
+  // scoped to their own record inside the controller (see getSession).
+  fastify.get<{ Params: { id: string } }>("/:id", {}, getSession);
 
   fastify.post("/", { 
     schema: sessionCreateSchema, 

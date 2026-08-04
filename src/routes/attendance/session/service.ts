@@ -105,6 +105,8 @@ export const getSession = async (
 ) => {
   try {
     const sessionId = request.params.id;
+    const userId = request.user.id;
+    const userRole = request.user.role;
 
     const session = await AttendanceSession.findById(sessionId)
       .populate("batch", "name code year adm_year department")
@@ -118,6 +120,46 @@ export const getSession = async (
         message: "Attendance session not found",
         data: "",
       });
+    }
+
+    // Students can only view sessions in which they have a record, and only
+    // see their own record within that session (not classmates' records).
+    if (userRole === "student") {
+      const ownRecord = (session as any).records.find(
+        (r: any) => r.student && r.student._id.toString() === userId.toString()
+      );
+      if (!ownRecord) {
+        return reply.status(403).send({
+          status_code: 403,
+          message: "You are not authorized to view this attendance session",
+          data: "",
+        });
+      }
+      (session as any).records = [ownRecord];
+    }
+
+    // Parents can only view sessions their child was part of, scoped to the
+    // child's own record. Parent's child is stored on the user profile as
+    // `profile.child` (a User._id referencing the student).
+    if (userRole === "parent") {
+      let parentChild = (request.user as any)?.profile?.child;
+      if (!parentChild) {
+        const parentDoc = await User.findById(userId).select("profile.child").lean();
+        parentChild = (parentDoc as any)?.profile?.child;
+      }
+      const childRecord = parentChild
+        ? (session as any).records.find(
+            (r: any) => r.student && r.student._id.toString() === parentChild.toString()
+          )
+        : null;
+      if (!childRecord) {
+        return reply.status(403).send({
+          status_code: 403,
+          message: "You are not authorized to view this attendance session",
+          data: "",
+        });
+      }
+      (session as any).records = [childRecord];
     }
 
     return reply.send({
