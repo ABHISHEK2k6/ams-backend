@@ -1,6 +1,7 @@
 import { FastifyRequest, FastifyReply } from "fastify";
 import { AttendanceSession } from "@/plugins/db/models/attendance.model";
 import { User } from "@/plugins/db/models/auth.model";
+import { resolveObjectIdString } from "@/lib/scope";
 import mongoose from "mongoose";
 
 export const createRecord = async (
@@ -166,12 +167,9 @@ export const getRecord = async (
     // Parents can view only their child's attendance record. Parent's child is stored
     // on the user profile as `profile.child` (a User._id referencing the student).
     if (userRole === "parent") {
-      let parentChild = (request.user as any)?.profile?.child;
-      if (!parentChild) {
-        const parentDoc = await User.findById(userId).select("profile.child").lean();
-        parentChild = parentDoc?.profile?.child;
-      }
-      if (!parentChild || record.student._id.toString() !== parentChild.toString()) {
+      const parentDoc = await User.findById(userId).select("profile.child").lean();
+      const childIdStr = resolveObjectIdString((parentDoc as any)?.profile?.child);
+      if (!childIdStr || record.student._id.toString() !== childIdStr) {
         return reply.status(403).send({
           status_code: 403,
           message: "You are not authorized to view this attendance record",
@@ -272,19 +270,16 @@ export const listRecords = async (
 
     // Parents can list only their child's attendance records. Resolve `profile.child`.
     if (userRole === "parent") {
-      let parentChild = (request.user as any)?.profile?.child;
-      if (!parentChild) {
-        const parentDoc = await User.findById(userId).select("profile.child").lean();
-        parentChild = parentDoc?.profile?.child;
-      }
-      if (!parentChild) {
+      const parentDoc = await User.findById(userId).select("profile.child").lean();
+      const childIdStr = resolveObjectIdString((parentDoc as any)?.profile?.child);
+      if (!childIdStr) {
         return reply.status(403).send({
           status_code: 403,
           message: "Parent profile does not have an associated child",
           data: "",
         });
       }
-      recordMatch["records.student"] = new mongoose.Types.ObjectId(parentChild);
+      recordMatch["records.student"] = new mongoose.Types.ObjectId(childIdStr);
     }
     
     if (status) {

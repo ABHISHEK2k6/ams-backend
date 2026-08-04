@@ -2,6 +2,7 @@ import { FastifyRequest, FastifyReply } from "fastify";
 import { AttendanceSession } from "@/plugins/db/models/attendance.model";
 import { User } from "@/plugins/db/models/auth.model";
 import { Batch } from "@/plugins/db/models/academics.model";
+import { resolveObjectIdString } from "@/lib/scope";
 import mongoose from "mongoose";
 
 interface StatsQuery {
@@ -32,19 +33,16 @@ export const getStats = async (
 
       // If the requester is a parent, allow only their associated child
       if (userRole === "parent") {
-        let parentChild = (request.user as any)?.profile?.child;
-        if (!parentChild) {
-          const parentDoc = await User.findById(userId).select("profile.child").lean();
-          parentChild = parentDoc?.profile?.child;
-        }
-        if (!parentChild) {
+        const parentDoc = await User.findById(userId).select("profile.child").lean();
+        const childIdStr = resolveObjectIdString((parentDoc as any)?.profile?.child);
+        if (!childIdStr) {
           return reply.status(403).send({
             status_code: 403,
             message: "Parent profile does not have an associated child",
             data: "",
           });
         }
-        if (student !== parentChild.toString()) {
+        if (student !== childIdStr) {
           return reply.status(403).send({
             status_code: 403,
             message: "Parents can only view stats for their associated child",
@@ -64,19 +62,16 @@ export const getStats = async (
     } else {
       // No student param provided: if requester is a parent, use their child ID
       if (userRole === "parent") {
-        let parentChild = (request.user as any)?.profile?.child;
-        if (!parentChild) {
-          const parentDoc = await User.findById(userId).select("profile.child").lean();
-          parentChild = parentDoc?.profile?.child;
-        }
-        if (!parentChild) {
+        const parentDoc = await User.findById(userId).select("profile.child").lean();
+        const childIdStr = resolveObjectIdString((parentDoc as any)?.profile?.child);
+        if (!childIdStr) {
           return reply.status(403).send({
             status_code: 403,
             message: "Parent profile does not have an associated child",
             data: "",
           });
         }
-        targetStudentId = parentChild.toString();
+        targetStudentId = childIdStr;
       }
     }
 

@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 import { User } from "@/plugins/db/models/auth.model";
 import { Batch } from "@/plugins/db/models/academics.model";
 import { AttendanceSession } from "@/plugins/db/models/attendance.model";
-import { getScopeBatchFilter } from "@/lib/scope";
+import { getScopeBatchFilter, resolveObjectIdString } from "@/lib/scope";
 
 interface CalendarMonthQuery {
   month: number;
@@ -30,9 +30,8 @@ function resolveRecordStudentId(user: CalendarUser): mongoose.Types.ObjectId | n
     return user._id as mongoose.Types.ObjectId;
   }
   if (user.role === "parent") {
-    const childId = user.profile?.child;
-    if (!childId) return null;
-    return new mongoose.Types.ObjectId(childId as any);
+    const childIdStr = resolveObjectIdString(user.profile?.child);
+    return childIdStr ? new mongoose.Types.ObjectId(childIdStr) : null;
   }
   return null;
 }

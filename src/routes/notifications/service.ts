@@ -4,6 +4,7 @@ import { Notification } from "@/plugins/db/models/notifications.models";
 import { auth } from "@/plugins/auth";
 import { authClient } from "@/plugins/auth";
 import { Batch } from "@/plugins/db/models/academics.model";
+import { resolveObjectIdString } from "@/lib/scope";
 
 
 export const postNotification = async (
@@ -206,9 +207,10 @@ export const getNotification = async (
   else if (request.user.role === "parent") {
     const profile = (user.profile ?? {}) as any;
 
-    if (profile.child) {
+    const childId = resolveObjectIdString(profile.child);
+    if (childId) {
       // Ensure we have child's profile details to match batch/year/department
-      const child = await User.findById(profile.child).lean();
+      const child = await User.findById(childId).lean();
       const childProfile = (child?.profile ?? {}) as any;
 
       const notificationsForParents: any[] = [];
