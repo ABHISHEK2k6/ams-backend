@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//d/ABHI/Abhi/Mulearn/AMS/ams-frontend/lib/types/**)"
+    ]
+  }
+}

@@ -18,6 +18,14 @@ export const createRecord = async (
       remarks?: string;
     };
 
+    if (!mongoose.Types.ObjectId.isValid(session) || !mongoose.Types.ObjectId.isValid(student)) {
+      return reply.status(400).send({
+        status_code: 400,
+        message: "Invalid session or student ID format",
+        data: "",
+      });
+    }
+
     // Verify the session exists
     const attendanceSession = await AttendanceSession.findById(session);
     if (!attendanceSession) {
@@ -77,6 +85,14 @@ export const createBulkRecords = async (
       records: Array<{ student: string; status: string; remarks?: string }>;
     };
 
+    if (!mongoose.Types.ObjectId.isValid(session)) {
+      return reply.status(400).send({
+        status_code: 400,
+        message: "Invalid session ID format",
+        data: "",
+      });
+    }
+
     // Verify the session exists
     const attendanceSession = await AttendanceSession.findById(session);
     if (!attendanceSession) {
@@ -94,6 +110,11 @@ export const createBulkRecords = async (
     const existingStudentIds = attendanceSession.records.map((r: any) => r.student.toString());
 
     for (const record of records) {
+      if (!mongoose.Types.ObjectId.isValid(record.student)) {
+        errors.push({ student: record.student, message: "Invalid student ID format" });
+        continue;
+      }
+
       if (existingStudentIds.includes(record.student)) {
         errors.push({ student: record.student, message: "Record already exists" });
         continue;
@@ -131,6 +152,75 @@ export const createBulkRecords = async (
   }
 };
 
+// Updates multiple existing records by recordId in one call (mirrors createBulkRecords,
+// which handles the create side). The frontend already targets PUT /attendance/record/bulk
+// with { session, updates: [{ recordId, status, remarks }] } — without this route, that
+// request fell through to PUT /:id with id="bulk", which isn't a valid ObjectId and crashed.
+export const updateBulkRecords = async (
+  request: FastifyRequest,
+  reply: FastifyReply
+) => {
+  try {
+    const { session, updates } = request.body as {
+      session: string;
+      updates: Array<{ recordId: string; status?: string; remarks?: string }>;
+    };
+
+    if (!mongoose.Types.ObjectId.isValid(session)) {
+      return reply.status(400).send({
+        status_code: 400,
+        message: "Invalid session ID format",
+        data: "",
+      });
+    }
+
+    const attendanceSession = await AttendanceSession.findById(session);
+    if (!attendanceSession) {
+      return reply.status(404).send({
+        status_code: 404,
+        message: "Attendance session not found",
+        data: "",
+      });
+    }
+
+    const updated: any[] = [];
+    const errors: any[] = [];
+
+    for (const update of updates) {
+      if (!mongoose.Types.ObjectId.isValid(update.recordId)) {
+        errors.push({ recordId: update.recordId, message: "Invalid record ID format" });
+        continue;
+      }
+
+      const record = (attendanceSession as any).records.id(update.recordId);
+      if (!record) {
+        errors.push({ recordId: update.recordId, message: "Record not found in this session" });
+        continue;
+      }
+
+      if (update.status) record.status = update.status;
+      if (update.remarks !== undefined) record.remarks = update.remarks;
+      updated.push(record);
+    }
+
+    if (updated.length > 0) {
+      await attendanceSession.save();
+    }
+
+    return reply.send({
+      status_code: 200,
+      message: `Updated ${updated.length} attendance record(s)`,
+      data: { updated, errors: errors.length > 0 ? errors : undefined },
+    });
+  } catch (error) {
+    return reply.status(500).send({
+      status_code: 500,
+      message: "Failed to update bulk attendance records",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+};
+
 export const getRecord = async (
   request: FastifyRequest<{ Params: { id: string } }>,
   reply: FastifyReply
@@ -139,6 +229,14 @@ export const getRecord = async (
     const recordId = request.params.id;
     const userId = request.user.id;
     const userRole = request.user.role;
+
+    if (!mongoose.Types.ObjectId.isValid(recordId)) {
+      return reply.status(400).send({
+        status_code: 400,
+        message: "Invalid record ID format",
+        data: "",
+      });
+    }
 
     const sessionDoc = await AttendanceSession.findOne({ "records._id": new mongoose.Types.ObjectId(recordId) })
       .populate("records.student", "name email first_name last_name")
@@ -398,6 +496,14 @@ export const updateRecord = async (
     const recordId = request.params.id;
     const userId = request.user.id;
 
+    if (!mongoose.Types.ObjectId.isValid(recordId)) {
+      return reply.status(400).send({
+        status_code: 400,
+        message: "Invalid record ID format",
+        data: "",
+      });
+    }
+
     const sessionDoc = await AttendanceSession.findOne({ "records._id": new mongoose.Types.ObjectId(recordId) })
       .populate("subject", "name code sem");
     if (!sessionDoc) {
@@ -487,6 +593,14 @@ export const deleteRecord = async (
   try {
     const recordId = request.params.id;
     const userId = request.user.id;
+
+    if (!mongoose.Types.ObjectId.isValid(recordId)) {
+      return reply.status(400).send({
+        status_code: 400,
+        message: "Invalid record ID format",
+        data: "",
+      });
+    }
 
     const sessionDoc = await AttendanceSession.findOne({ "records._id": new mongoose.Types.ObjectId(recordId) });
     if (!sessionDoc) {

@@ -42,6 +42,32 @@ export const recordBulkCreateSchema: RouteShorthandOptions["schema"] = {
   },
 };
 
+export const recordBulkUpdateSchema: RouteShorthandOptions["schema"] = {
+  body: {
+    type: "object",
+    required: ["session", "updates"],
+    properties: {
+      session: { type: "string" },
+      updates: {
+        type: "array",
+        minItems: 1,
+        items: {
+          type: "object",
+          required: ["recordId"],
+          properties: {
+            recordId: { type: "string" },
+            status: {
+              type: "string",
+              enum: ["present", "absent", "late", "excused"]
+            },
+            remarks: { type: "string" },
+          },
+        },
+      },
+    },
+  },
+};
+
 export const recordUpdateSchema: RouteShorthandOptions["schema"] = {
   body: {
     type: "object",

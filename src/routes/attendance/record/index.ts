@@ -6,19 +6,21 @@ import {
   RouteShorthandOptions,
 } from "fastify";
 import { isAnyStaff } from "@/middleware/roles";
-import { 
+import {
   createRecord,
-  createBulkRecords, 
-  getRecord, 
-  listRecords, 
-  updateRecord, 
-  deleteRecord 
+  createBulkRecords,
+  updateBulkRecords,
+  getRecord,
+  listRecords,
+  updateRecord,
+  deleteRecord
 } from "./service";
-import { 
+import {
   recordCreateSchema,
-  recordBulkCreateSchema, 
-  recordUpdateSchema, 
-  recordListSchema 
+  recordBulkCreateSchema,
+  recordBulkUpdateSchema,
+  recordUpdateSchema,
+  recordListSchema
 } from "./schema";
 
 export default async function (fastify: FastifyInstance) {
@@ -46,6 +48,9 @@ export default async function (fastify: FastifyInstance) {
 
   // Create bulk attendance records
   fastify.post("/bulk", { schema: recordBulkCreateSchema, preHandler: [isAnyStaff] }, createBulkRecords);
+
+  // Update bulk attendance records by recordId (companion to POST /bulk for creates)
+  fastify.put("/bulk", { schema: recordBulkUpdateSchema, preHandler: [isAnyStaff] }, updateBulkRecords);
 
   fastify.put<{ Params: { id: string } }>("/:id", { schema: recordUpdateSchema, preHandler: [isAnyStaff] }, updateRecord);
 
