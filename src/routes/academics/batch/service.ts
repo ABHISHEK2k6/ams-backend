@@ -2,6 +2,7 @@ import { FastifyRequest, FastifyReply } from "fastify";
 import mongoose from "mongoose";
 import { Batch } from "@/plugins/db/models/academics.model";
 import { User } from "@/plugins/db/models/auth.model";
+import { AttendanceSession } from "@/plugins/db/models/attendance.model";
 
 interface ListBatchesQuery {
   page?: number;
@@ -429,6 +430,19 @@ export const advanceSemHandler = async (
         updated.push({ _id: String(batch._id), name: batch.name, previousSem: batch.sem, sem: nextSem });
         await Batch.updateOne({ _id: batch._id }, { $set: { sem: nextSem } });
       }
+    }
+
+    // Archive attendance sessions belonging to the semester each batch just left
+    const archiveOps = updated
+      .filter((u) => u.previousSem !== u.sem)
+      .map((u) => ({
+        updateMany: {
+          filter: { batch: new mongoose.Types.ObjectId(u._id), sem: u.previousSem },
+          update: { $set: { archived: true } },
+        },
+      }));
+    if (archiveOps.length > 0) {
+      await AttendanceSession.bulkWrite(archiveOps);
     }
 
     return reply.send({

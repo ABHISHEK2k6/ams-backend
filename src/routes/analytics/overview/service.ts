@@ -54,9 +54,9 @@ export const getOverviewHandler = async (
             role: "teacher",
             ...(user.role === "hod" ? { "profile.department": user.profile?.department } : {}),
           }),
-      AttendanceSession.countDocuments({ batch: { $in: batchIds }, start_time: { $gte: todayStart } }),
+      AttendanceSession.countDocuments({ batch: { $in: batchIds }, start_time: { $gte: todayStart }, archived: { $ne: true } }),
       AttendanceSession.aggregate([
-        { $match: { batch: { $in: batchIds }, start_time: { $gte: since } } },
+        { $match: { batch: { $in: batchIds }, start_time: { $gte: since }, archived: { $ne: true } } },
         { $unwind: "$records" },
         {
           $group: {

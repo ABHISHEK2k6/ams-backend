@@ -2,6 +2,7 @@ import { FastifyRequest, FastifyReply } from "fastify";
 import mongoose from "mongoose";
 import { AttendanceSession } from "@/plugins/db/models/attendance.model";
 import { User } from "@/plugins/db/models/auth.model";
+import { Batch } from "@/plugins/db/models/academics.model";
 
 export const createSession = async (
   request: FastifyRequest,
@@ -41,7 +42,7 @@ export const createSession = async (
       start_time,
       session_type
     })
-    
+
     if( exsistingSession) {
       return reply.status(409).send({
         status_code: 409,
@@ -49,8 +50,16 @@ export const createSession = async (
         data: "",
       });
     }
-    
-    
+
+    const batchDoc = await Batch.findById(batch).select("sem");
+    if (!batchDoc) {
+      return reply.status(404).send({
+        status_code: 404,
+        message: "Batch not found",
+        data: "",
+      });
+    }
+
     const newSession = new AttendanceSession({
       batch,
       subject,
@@ -59,6 +68,7 @@ export const createSession = async (
       end_time: new Date(end_time),
       hours_taken,
       session_type,
+      sem: batchDoc.sem,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -109,8 +119,8 @@ export const getSession = async (
     const userRole = request.user.role;
 
     const session = await AttendanceSession.findById(sessionId)
-      .populate("batch", "name code year adm_year department")
-      .populate("subject", "name code subject_code sem type")
+      .populate("batch", "name id adm_year department sem")
+      .populate("subject", "name subject_code sem type")
       .populate("created_by", "name email first_name last_name")
       .populate("records.student", "name email first_name last_name profile");
 
@@ -221,8 +231,8 @@ export const listSessions = async (
     const skip = (page - 1) * limit;
 
     const sessions = await AttendanceSession.find(filter)
-      .populate("batch", "name code year")
-      .populate("subject", "name code")
+      .populate("batch", "name id adm_year department sem")
+      .populate("subject", "name subject_code sem type")
       .populate("created_by", "name email first_name last_name")
       .select("-records")
       .sort({ start_time: -1 })
@@ -268,6 +278,7 @@ export const getRecentSessions = async (
       {
         $match: {
           created_by: createdByMatch,
+          archived: { $ne: true },
         },
       },
       {
@@ -316,6 +327,7 @@ export const getRecentSessions = async (
             name: "$batchInfo.name",
             department: "$batchInfo.department",
             adm_year: "$batchInfo.adm_year",
+            sem: "$batchInfo.sem",
           },
           subject: {
             _id: "$subjectInfo._id",

@@ -84,7 +84,7 @@ export const getStats = async (
       : null;
 
     const pipeline: any[] = [
-      { $match: { "records.student": studentObjectId } },
+      { $match: { "records.student": studentObjectId, archived: { $ne: true } } },
       { $unwind: "$records" },
       { $match: { "records.student": studentObjectId } },
       {

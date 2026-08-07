@@ -36,6 +36,14 @@ export const createRecord = async (
       });
     }
 
+    if (attendanceSession.archived) {
+      return reply.status(409).send({
+        status_code: 409,
+        message: "This session belongs to a past semester and is now read-only",
+        data: "",
+      });
+    }
+
     // Check if record already exists for this student and session
     const existingRecord = attendanceSession.records.find((r: any) => r.student.toString() === student);
     if (existingRecord) {
@@ -99,6 +107,14 @@ export const createBulkRecords = async (
       return reply.status(404).send({
         status_code: 404,
         message: "Attendance session not found",
+        data: "",
+      });
+    }
+
+    if (attendanceSession.archived) {
+      return reply.status(409).send({
+        status_code: 409,
+        message: "This session belongs to a past semester and is now read-only",
         data: "",
       });
     }
@@ -524,6 +540,14 @@ export const updateRecord = async (
       return reply.status(403).send({
         status_code: 403,
         message: "You are not authorized to update this record",
+        data: "",
+      });
+    }
+
+    if ((sessionDoc as any).archived) {
+      return reply.status(409).send({
+        status_code: 409,
+        message: "This session belongs to a past semester and is now read-only",
         data: "",
       });
     }
