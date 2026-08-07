@@ -35,38 +35,41 @@ export const postNotification = async (
   }
 
   if (targetGroup === "year") {
-    // Allow principal/hod. Also allow teachers when they are targeting parents specifically.
+    // Admins have unrestricted access. Otherwise allow principal/hod, or
+    // teachers when they are targeting parents specifically.
     const targetingParents = Array.isArray(targetUsers) && targetUsers.includes("parent");
-    if (request.user.role === "principal" || request.user.role === "hod" || (request.user.role === "teacher" && targetingParents)) {
+    if (request.user.role === "admin" || request.user.role === "principal" || request.user.role === "hod" || (request.user.role === "teacher" && targetingParents)) {
       // allowed
     } else {
       return reply.status(403).send({
         "status_code": 403,
-        "message": "Request Failed! User Role Not Satisfied (Should be principal or hod, or teacher when targeting parents)",
+        "message": "Request Failed! User Role Not Satisfied (Should be admin, principal or hod, or teacher when targeting parents)",
         "data": ""
       })
     }
   }
   else if (targetGroup === "batch") {
-    // Allow principal/hod/teacher. Teachers can target both students and parents.
-    if (request.user.role === "principal" || request.user.role === "hod" || request.user.role === "teacher") { }
+    // Admins have unrestricted access. Otherwise allow principal/hod/teacher.
+    // Teachers can target both students and parents.
+    if (request.user.role === "admin" || request.user.role === "principal" || request.user.role === "hod" || request.user.role === "teacher") { }
     else {
       return reply.status(403).send({
         "status_code": 403,
-        "message": "Request Failed! User Role Not Satisfied (Should be principal or hod or teacher)",
+        "message": "Request Failed! User Role Not Satisfied (Should be admin, principal or hod or teacher)",
         "data": ""
       })
     }
   }
   else if (targetGroup === "department") {
-    // Allow principal/hod. Also allow teachers when targeting parents specifically.
+    // Admins have unrestricted access. Otherwise allow principal/hod, or
+    // teachers when targeting parents specifically.
     const targetingParentsDept = Array.isArray(targetUsers) && targetUsers.includes("parent");
-    if (request.user.role === "principal" || request.user.role === "hod" || (request.user.role === "teacher" && targetingParentsDept)) {
+    if (request.user.role === "admin" || request.user.role === "principal" || request.user.role === "hod" || (request.user.role === "teacher" && targetingParentsDept)) {
       // allowed
     } else {
       return reply.status(403).send({
         "status_code": 403,
-        "message": "Request Failed! User Role Not Satisfied (Should be principal or hod, or teacher when targeting parents)",
+        "message": "Request Failed! User Role Not Satisfied (Should be admin, principal or hod, or teacher when targeting parents)",
         "data": ""
       })
     }
@@ -91,7 +94,7 @@ export const postNotification = async (
     })
   }
   else {
-    if (request.user.role == "principal" || request.user.role === "hod") {
+    if (request.user.role === "admin" || request.user.role == "principal" || request.user.role === "hod") {
 
       const notificationInstance = new Notification({
         targetUsers: targetUsers,
@@ -112,7 +115,7 @@ export const postNotification = async (
     else {
       return reply.status(403).send({
         "status_code": 403,
-        "message": "Request Failed , should be of principle or hod",
+        "message": "Request Failed , should be of admin, principal or hod",
         "data": ""
       })
     }
@@ -270,6 +273,86 @@ export const getNotification = async (
     })
   }
 }
+
+// ─── GET /notifications/all — admin-only, unfiltered list ────────────────────
+
+export const listAllNotifications = async (
+  request: FastifyRequest<{
+    Querystring: {
+      page?: number;
+      limit?: number;
+      search?: string;
+      targetGroup?: string;
+      notificationType?: string;
+      priorityLevel?: string;
+      sort?: "createdAt" | "title" | "priorityLevel";
+      order?: "asc" | "desc";
+    };
+  }>,
+  reply: FastifyReply
+) => {
+  try {
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      targetGroup,
+      notificationType,
+      priorityLevel,
+      sort = "createdAt",
+      order = "desc",
+    } = request.query;
+    const skip = (page - 1) * limit;
+
+    const filter: Record<string, unknown> = {};
+    if (targetGroup) filter.targetGroup = targetGroup;
+    if (notificationType) filter.Notificationtype = notificationType;
+    if (priorityLevel) filter.priorityLevel = priorityLevel;
+    if (search) {
+      const searchRegex = { $regex: search, $options: "i" };
+      filter.$or = [{ title: searchRegex }, { message: searchRegex }];
+    }
+
+    // The schema has no timestamps field, so "createdAt" order is derived
+    // from the ObjectId itself, which is chronological.
+    const sortField = sort === "createdAt" ? "_id" : sort;
+    const sortOrder = order === "asc" ? 1 : -1;
+
+    const [notifications, totalCount] = await Promise.all([
+      Notification.find(filter)
+        .populate("createdBy", "name email role")
+        .sort({ [sortField]: sortOrder })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Notification.countDocuments(filter),
+    ]);
+
+    const totalPages = Math.ceil(totalCount / limit);
+
+    return reply.status(200).send({
+      status_code: 200,
+      message: "Successfully fetched all notifications",
+      data: {
+        notifications,
+        pagination: {
+          currentPage: page,
+          totalPages,
+          totalNotifications: totalCount,
+          limit,
+          hasNextPage: page < totalPages,
+          hasPreviousPage: page > 1,
+        },
+      },
+    });
+  } catch (e) {
+    return reply.status(500).send({
+      status_code: 500,
+      message: "Error fetching notifications",
+      error: e instanceof Error ? e.message : "Unknown error",
+    });
+  }
+};
 
 export const deleteNotification = async (
   request : FastifyRequest<{ Params: { id: string } }>,

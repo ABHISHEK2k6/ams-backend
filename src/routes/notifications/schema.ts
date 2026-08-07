@@ -75,6 +75,22 @@ export const notificationCreateSchema: RouteShorthandOptions["schema"] = {
 };
 
 
+export const notificationListAllSchema: RouteShorthandOptions["schema"] = {
+    querystring: {
+        type: "object",
+        properties: {
+            page: { type: "number", minimum: 1, default: 1 },
+            limit: { type: "number", minimum: 1, maximum: 100, default: 10 },
+            search: { type: "string", minLength: 1 },
+            targetGroup: { type: "string", enum: ["college", "year", "batch", "department"] },
+            notificationType: { type: "string", enum: ["announcement", "info", "results"] },
+            priorityLevel: { type: "string", enum: ["High", "Medium", "Low"] },
+            sort: { type: "string", enum: ["createdAt", "title", "priorityLevel"], default: "createdAt" },
+            order: { type: "string", enum: ["asc", "desc"], default: "desc" },
+        },
+    },
+};
+
 export const notificationUpdateSchema: RouteShorthandOptions["schema"] = {
     body: {
         type: "object",

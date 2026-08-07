@@ -10,7 +10,7 @@ export const getOverview = async (
     const userId = request.user.id;
 
     const pipeline: any[] = [
-      { $match: { created_by: new mongoose.Types.ObjectId(userId) } },
+      { $match: { created_by: new mongoose.Types.ObjectId(userId), archived: { $ne: true } } },
       { $unwind: { path: "$records", preserveNullAndEmptyArrays: true } },
       {
         $group: {
@@ -52,7 +52,7 @@ export const getOverview = async (
         $project: {
           _id: 0,
           className: "$subjectData.name",
-          classCode: "$subjectData.code",
+          classCode: "$subjectData.subject_code",
           totalClasses: 1,
           averageAttendance: {
             $cond: [

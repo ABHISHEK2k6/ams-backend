@@ -6,8 +6,8 @@ import {
   RouteShorthandOptions,
 } from "fastify";
 import { isAdmin, isAnyStaff, isTeacher } from "@/middleware/roles";
-import { deleteNotification, getNotification, postNotification, updateNotification } from "./service";
-import { notificationCreateSchema, notificationUpdateSchema } from "./schema";
+import { deleteNotification, getNotification, listAllNotifications, postNotification, updateNotification } from "./service";
+import { notificationCreateSchema, notificationListAllSchema, notificationUpdateSchema } from "./schema";
 
 
 export default async function (fastify : FastifyInstance) {
@@ -15,6 +15,20 @@ export default async function (fastify : FastifyInstance) {
 
     fastify.get("/", getNotification);
     fastify.post("/", {schema: notificationCreateSchema, preHandler: [isAnyStaff]}, postNotification);
+
+    // Admin-only: unfiltered, paginated view of every notification in the system.
+    fastify.get<{
+      Querystring: {
+        page?: number;
+        limit?: number;
+        search?: string;
+        targetGroup?: string;
+        notificationType?: string;
+        priorityLevel?: string;
+        sort?: "createdAt" | "title" | "priorityLevel";
+        order?: "asc" | "desc";
+      };
+    }>("/all", { schema: notificationListAllSchema, preHandler: [isAdmin] }, listAllNotifications);
 
     //staff-only routes
     fastify.delete<{ Params: { id: string } }>("/:id", { preHandler: [isAnyStaff] }, deleteNotification)

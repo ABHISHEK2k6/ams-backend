@@ -432,15 +432,29 @@ export const advanceSemHandler = async (
       }
     }
 
-    // Archive attendance sessions belonging to the semester each batch just left
+    // Recompute archived status for every batch whose sem changed. This has to be a full
+    // recompute rather than a one-way "archive the sem being left" sweep, because sem can
+    // move backward too (the explicit-set path above isn't restricted to +1) — a session
+    // archived while the batch was ahead of it must un-archive if the batch drops back to
+    // (or below) that session's sem.
     const archiveOps = updated
       .filter((u) => u.previousSem !== u.sem)
-      .map((u) => ({
-        updateMany: {
-          filter: { batch: new mongoose.Types.ObjectId(u._id), sem: u.previousSem },
-          update: { $set: { archived: true } },
-        },
-      }));
+      .flatMap((u) => {
+        const newSemNum = Number.parseInt(u.sem, 10);
+        if (!Number.isFinite(newSemNum)) return [];
+
+        const archivedSems: string[] = [];
+        const activeSems: string[] = [];
+        for (let s = MIN_SEM; s <= MAX_SEM; s++) {
+          (s < newSemNum ? archivedSems : activeSems).push(String(s));
+        }
+
+        const batchId = new mongoose.Types.ObjectId(u._id);
+        return [
+          { updateMany: { filter: { batch: batchId, sem: { $in: archivedSems } }, update: { $set: { archived: true } } } },
+          { updateMany: { filter: { batch: batchId, sem: { $in: activeSems } }, update: { $set: { archived: false } } } },
+        ];
+      });
     if (archiveOps.length > 0) {
       await AttendanceSession.bulkWrite(archiveOps);
     }

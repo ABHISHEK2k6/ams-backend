@@ -199,6 +199,14 @@ export const updateBulkRecords = async (
       });
     }
 
+    if ((attendanceSession as any).archived) {
+      return reply.status(409).send({
+        status_code: 409,
+        message: "This session belongs to a past semester and is now read-only",
+        data: "",
+      });
+    }
+
     const updated: any[] = [];
     const errors: any[] = [];
 
@@ -645,6 +653,14 @@ export const deleteRecord = async (
       return reply.status(403).send({
         status_code: 403,
         message: "You are not authorized to delete this record",
+        data: "",
+      });
+    }
+
+    if ((sessionDoc as any).archived) {
+      return reply.status(409).send({
+        status_code: 409,
+        message: "This session belongs to a past semester and is now read-only",
         data: "",
       });
     }
