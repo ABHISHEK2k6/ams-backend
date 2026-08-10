@@ -544,6 +544,7 @@ export const updateUser = async (
 
     const targetRole = body.role ?? existingUser.role;
     let mergedStudentProfileForFallback: Record<string, unknown> | undefined;
+    const unsetPayload: Record<string, ""> = {};
     if (targetRole === "student") {
       const currentProfile = (existingUser.profile ?? {}) as Record<string, unknown>;
       const incomingProfile = (body.profile ?? {}) as Record<string, unknown>;
@@ -554,10 +555,26 @@ export const updateUser = async (
       mergedStudentProfileForFallback = mergedStudentProfile;
       duplicateCheckProfile = mergedStudentProfile;
 
+      // adm_number/candidate_code are decided here, not by the generic per-key loop above —
+      // an empty value must be $unset (not $set to ""), because the partialFilterExpression
+      // on their unique indexes only excludes documents where the field doesn't exist. Storing
+      // "" keeps the field present, so a second cleared student collides with the first one,
+      // and even an unrelated save that merely re-sends an already-empty field can trip it.
+      delete updatePayload["profile.adm_number"];
+      delete updatePayload["profile.candidate_code"];
+
       try {
         const { admNumber, candidateCode } = await assertStudentUniqueFields(mergedStudentProfile, userId);
-        if (admNumber) updatePayload["profile.adm_number"] = admNumber;
-        if (candidateCode) updatePayload["profile.candidate_code"] = candidateCode;
+        if (admNumber) {
+          updatePayload["profile.adm_number"] = admNumber;
+        } else if (Object.prototype.hasOwnProperty.call(incomingProfile, "adm_number")) {
+          unsetPayload["profile.adm_number"] = "";
+        }
+        if (candidateCode) {
+          updatePayload["profile.candidate_code"] = candidateCode;
+        } else if (Object.prototype.hasOwnProperty.call(incomingProfile, "candidate_code")) {
+          unsetPayload["profile.candidate_code"] = "";
+        }
       } catch (validationError) {
         if (validationError instanceof StudentUniqueFieldError) {
           return reply.status(422).send({
@@ -572,7 +589,9 @@ export const updateUser = async (
 
     let updated;
     try {
-      updated = await User.findByIdAndUpdate(userId, updatePayload, { new: true });
+      const updateOps: Record<string, unknown> = { $set: updatePayload };
+      if (Object.keys(unsetPayload).length > 0) updateOps.$unset = unsetPayload;
+      updated = await User.findByIdAndUpdate(userId, updateOps, { new: true });
     } catch (updateError) {
       if (isDuplicateKeyError(updateError)) {
         const fallbackProfile = mergedStudentProfileForFallback ?? {
